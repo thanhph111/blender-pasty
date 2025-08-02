@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+# script/setup: Set up the environment for development.
+
+# Exit immediately if an error occurs
+set -euo pipefail
+
+# Go to the project directory
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+for cmd in bun bunx uv; do
+    hash "$cmd" 2>/dev/null || {
+        echo "Command \`$cmd\` not found. Aborting."
+        exit 1
+    }
+done
+
+# Install uv dependencies
+echo '==> Install dependencies'
+uv sync
+
+# Install bun.sh dependencies
+echo '==> Install bun.sh dependencies…'
+bun install --frozen-lockfile
+
+# Set up the Lefthook
+echo '==> Set up the Lefthook…'
+bunx lefthook install --force

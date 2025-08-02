@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+# script/lint: Run all linting checks
+
+# Exit immediately if an error occurs
+set -euo pipefail
+
+# Go to the project directory
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+# Check if bunx is installed
+hash bunx 2>/dev/null || {
+    echo "Command \`bunx\` not found. Aborting."
+    exit 1
+}
+
+# Run all linting checks
+bunx lefthook run pre-commit --all-files

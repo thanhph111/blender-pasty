@@ -1,0 +1,57 @@
+output:
+  - summary
+  - empty_summary
+  - failure
+  - execution_info
+  - skips
+
+pre-commit:
+  jobs:
+    - name: Text
+      file_types: [text]
+      group:
+        jobs:
+          - name: Format
+            group:
+              jobs:
+                - name: File-specific format
+                  group:
+                    parallel: true
+                    jobs:
+                      - name: Python format
+                        glob:
+                          - '*.py'
+                        group:
+                          jobs:
+                            - name: Ruff check with fixes
+                              run: uv run ruff check --force-exclude --fix --exit-non-zero-on-fix {staged_files}
+                            - name: Ruff format
+                              run: uv run ruff format --force-exclude --exit-non-zero-on-format {staged_files}
+                      - name: Markdown format
+                        glob: '*.md'
+                        run: bunx markdownlint-cli2 --fix {staged_files}
+                - name: dprint format
+                  run: |
+                    if ! bunx dprint check --allow-no-files {staged_files}; then
+                      bunx dprint fmt --allow-no-files {staged_files}
+                      false
+                    fi
+                - name: Fix whitespace
+                  run: ./script/fix-whitespace {staged_files}
+          - name: Validate
+            group:
+              parallel: true
+              jobs:
+                - name: Python type check
+                  glob:
+                    - '*.{py,pyi}'
+                    - script/{export-parameters,render,test}
+                  run: uv run ty check {staged_files}
+                - name: Code Spell Checker
+                  run: >
+                    bunx cspell
+                    --no-must-find-files
+                    --no-progress
+                    --no-summary
+                    --gitignore
+                    {staged_files}
