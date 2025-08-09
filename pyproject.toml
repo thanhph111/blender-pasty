@@ -3,13 +3,14 @@ name = "blender-pasty"
 version = "0.0.0"
 description = ""
 readme = "README.md"
-requires-python = "==3.13.*"
+requires-python = "==3.11.*"
 dependencies = []
 
 [dependency-groups]
 dev = [
+    "fake-bpy-module>=20250630",
     "ruff>=0.12.7",
-    "ty>=0.0.1a16",
+    "ty>=0.0.1a17",
 ]
 
 [tool.uv]
@@ -40,7 +41,14 @@ extend-select = [
     "UP", # pyupgrade
 ]
 ignore = [
+    "T201", # Don't check for print statements
     "ERA001", # Found commented-out code
+    "N801", # Don't check class names
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = [
+    "N999", # Don't check root __init__.py files
 ]
 
 [tool.ruff.lint.flake8-tidy-imports]
@@ -50,4 +58,5 @@ ban-relative-imports = "all"
 combine-as-imports = true
 split-on-trailing-comma = false
 
-[tool.ty.src]
+[tool.pyright]
+typeCheckingMode = "off"

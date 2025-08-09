@@ -21,6 +21,7 @@
             "**/.DS_Store": true,
             "**/.coverage": true,
             "**/.git": true,
+            "**/.ruff_cache": true,
             "**/.venv": true,
             "**/Thumbs.db": true,
             "**/__pycache__": true,
@@ -74,13 +75,17 @@
         "[toml]": { "editor.defaultFormatter": "dprint.dprint" },
         "[typescript]": { "editor.defaultFormatter": "dprint.dprint" },
         "[typescriptreact]": { "editor.defaultFormatter": "dprint.dprint" },
-        "[yaml]": { "editor.defaultFormatter": "dprint.dprint" }
+        "[yaml]": { "editor.defaultFormatter": "dprint.dprint" },
+
+        // Blender
+        "blender.addon.moduleName": "pasty"
     },
     "launch": {},
     "extensions": {
         "recommendations": [
             // Ascending case-sensitive order
             "DavidAnson.vscode-markdownlint",
+            "JacquesLucke.blender-development",
             "astral-sh.ty",
             "charliermarsh.ruff",
             "dprint.dprint",
