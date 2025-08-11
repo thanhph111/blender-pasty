@@ -1,0 +1,22 @@
+#!/usr/bin/env -S uv run -s
+
+# Trigger internal modules import, this is official `bpy` package, not `fake-bpy-module` package
+import bpy  # noqa: F401 (unused import)
+
+
+def main():
+    import sys
+
+    try:
+        # Suppress `PGH003` use `type: ignore` comments which suppresses both ty and Pyright
+        from bl_pkg.bl_extension_cli import cli_extension_handler  # type: ignore  # noqa: PGH003
+
+        # Run the extension CLI, equivalent to `blender --command extension`
+        cli_extension_handler(sys.argv[1:])
+    except Exception as e:
+        print(f"An error occurred: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

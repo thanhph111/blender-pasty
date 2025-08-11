@@ -515,3 +515,6 @@ dist
 .svelte-kit
 
 ### User configurations ###
+
+# Build file
+*.zip

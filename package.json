@@ -71,7 +71,11 @@
                 "allowCompoundWords": true
             },
             {
-                "filename": "script/{fix-whitespace}",
+                "filename": "script/extension",
+                "languageId": "python"
+            },
+            {
+                "filename": "script/fix-whitespace",
                 "languageId": "typescript"
             }
         ],

@@ -21,6 +21,7 @@ pre-commit:
                       - name: Python format
                         glob:
                           - '*.py'
+                          - script/extension
                         group:
                           jobs:
                             - name: Ruff check with fixes
