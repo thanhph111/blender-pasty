@@ -1,14 +1,14 @@
 schema_version = "1.0.0"
 
 id = "pasty"
-version = "1.0.0"
+version = "0.0.1"
 name = "Pasty"
-tagline = "This is another extension"
+tagline = "Paste images from clipboard into Blender"
 maintainer = "thanhph111"
 type = "add-on"
 
 # Optional link to documentation, support, source files, etc
-# website = "https://extensions.blender.org/add-ons/my-example-package/"
+website = "https://github.com/thanhph111/blender-pasty"
 
 # See: https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
 tags = ["Animation", "Sequencer"]
@@ -25,7 +25,7 @@ platforms = [
     "windows-x64",
     "macos-arm64",
     "macos-x64",
-    # "linux-x64"
+    "linux-x64",
 ]
 
 # Optional: add-ons can list which resources they will require:
@@ -43,14 +43,12 @@ platforms = [
 # For longer explanations use the documentation or detail page.
 #
 [permissions]
-files = "Import/export FBX from/to disk"
-clipboard = "Copy and paste bone transforms"
+clipboard = "Copy and paste images to/from the system clipboard"
 
-# Optional: build settings.
+# Build settings.
 # https://docs.blender.org/manual/en/dev/advanced/extensions/command_line_arguments.html#command-line-args-extension-build
-# [build]
-# paths_exclude_pattern = [
-#   "__pycache__/",
-#   "/.git/",
-#   "/*.zip",
-# ]
+[build]
+paths = [
+    "README.md",
+    "__init__.py",
+]

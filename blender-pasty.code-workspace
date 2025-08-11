@@ -77,7 +77,7 @@
         "[typescriptreact]": { "editor.defaultFormatter": "dprint.dprint" },
         "[yaml]": { "editor.defaultFormatter": "dprint.dprint" },
 
-        // Blender
+        // Blender Development
         "blender.addon.moduleName": "pasty"
     },
     "launch": {},
