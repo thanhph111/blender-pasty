@@ -1,0 +1,30 @@
+name: Build Blender add-on
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Blender
+        uses: moguri/setup-blender@v1
+        with:
+          blender-version: '4.5'
+
+      - name: Build add-on
+        run: blender --command extension build
+
+      - name: Upload add-on
+        uses: actions/upload-artifact@v4
+        with:
+          path: pasty-*.zip
