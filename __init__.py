@@ -24,8 +24,12 @@ def image_editor() -> Generator[bpy.types.Area, None, None]:
             area.ui_type = former_ui_type
 
 
-def paste_image_from_clipboard() -> str:
-    """Paste an image from the clipboard into the image editor."""
+def paste_image_from_clipboard() -> bpy.types.Image:
+    """Paste an image from the clipboard into the image editor.
+
+    Returns:
+        bpy.types.Image: The newly created image object from the clipboard.
+    """
 
     keys_before = set(bpy.data.images.keys())
     with image_editor():
@@ -33,16 +37,17 @@ def paste_image_from_clipboard() -> str:
     keys_after = set(bpy.data.images.keys())
 
     assert keys_after != keys_before, "No new image was pasted from the clipboard"
-    return (keys_after - keys_before).pop()
+    image_id = (keys_after - keys_before).pop()
+    return bpy.data.images[image_id]
 
 
 def insert_image_as_reference(context: bpy.types.Context) -> None:
     """Insert an image from the clipboard as a reference object in the 3D View."""
 
-    image_id = paste_image_from_clipboard()
+    image = paste_image_from_clipboard()
     bpy.ops.object.empty_add(type="IMAGE", radius=5.0, align="VIEW")
     assert context.active_object is not None, "No active object found after adding empty"
-    context.active_object.data = bpy.data.images[image_id]  # ty: ignore[invalid-assignment]
+    context.active_object.data = image  # ty: ignore[invalid-assignment]
 
 
 def can_paste_from_clipboard() -> bool:
@@ -164,7 +169,7 @@ class PASTY_OT_sequence_editor_paste(bpy.types.Operator):
         current_frame = context.scene.frame_current
         image_strip = sequences.new_image(
             name="Pasted Image",
-            filepath=bpy.data.images[paste_image_from_clipboard()].filepath,
+            filepath=paste_image_from_clipboard().filepath,
             channel=1,
             frame_start=current_frame,
         )
@@ -231,8 +236,8 @@ class PASTY_OT_shader_editor_paste(bpy.types.Operator):
         # Offset location for next node
         location_y += 300
 
-        image_id = paste_image_from_clipboard()
-        node_image.image = bpy.data.images[image_id]  # ty: ignore[unresolved-attribute]
+        image = paste_image_from_clipboard()
+        node_image.image = image  # ty: ignore[unresolved-attribute]
         return {"FINISHED"}
 
     @classmethod
