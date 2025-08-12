@@ -42,7 +42,13 @@ def paste_image_from_clipboard() -> bpy.types.Image:
 
     assert keys_after != keys_before, "No new image was pasted from the clipboard"
     image_id = (keys_after - keys_before).pop()
-    return bpy.data.images[image_id]
+    image = bpy.data.images[image_id]
+
+    # Insert custom properties
+    image["pasty.pasted"] = True
+    image["pasty.paste_time"] = datetime.now().isoformat()
+
+    return image
 
 
 def insert_image_as_reference(context: bpy.types.Context) -> None:
