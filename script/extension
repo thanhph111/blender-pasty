@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run -s
+#!/usr/bin/env -S uv run -s --no-sync
 
 
 def main():
