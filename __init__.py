@@ -1,8 +1,12 @@
-from collections.abc import Generator
+import re
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
+from datetime import datetime
 from typing import ClassVar
 
 import bpy
+
+# region Image Editor Utilities
 
 
 @contextmanager
@@ -53,6 +57,61 @@ def insert_image_as_reference(context: bpy.types.Context) -> None:
 def can_paste_from_clipboard() -> bool:
     with image_editor():
         return bpy.ops.image.clipboard_paste.poll()  # ty: ignore[unresolved-attribute]
+
+
+# endregion
+
+
+# region Template Expansion
+
+
+CALLABLE_VARIABLES: dict[str, Callable[[], str]] = {
+    "day": lambda: datetime.now().strftime("%A"),
+    "date": lambda: datetime.now().strftime("%Y-%m-%d"),
+    "time": lambda: datetime.now().strftime("%H:%M:%S"),
+    "hour": lambda: datetime.now().strftime("%H"),
+    "minute": lambda: datetime.now().strftime("%M"),
+}
+
+
+FILTERS: dict[str, Callable[[str], str]] = {
+    "upper": str.upper,
+    "lower": str.lower,
+    "title": str.title,
+    "strip": str.strip,
+    # Example: Reverse string
+    "reverse": lambda s: s[::-1],
+}
+
+
+PATTERN = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\|?([a-zA-Z_]*)\}")
+
+
+def expand_template(template: str, extra_vars: dict[str, Callable[[], str]] | None = None) -> str:
+    if extra_vars:
+        CALLABLE_VARIABLES.update(extra_vars)
+
+    def replacer(match):
+        var_name = match.group(1)
+        filter_name = match.group(2)
+
+        # Get value
+        value = CALLABLE_VARIABLES.get(var_name, "{" + var_name + "}")
+        if callable(value):
+            value = value()
+
+        # Apply filter if exists
+        if filter_name:
+            func = FILTERS.get(filter_name)
+            if func:
+                value = func(str(value))
+
+        return str(value)
+
+    return PATTERN.sub(replacer, template)
+
+
+# endregion
 
 
 # region View3D Paste Reference Operator
@@ -273,6 +332,8 @@ def shader_editor_paste_context_menu_km(
 # endregion
 
 
+# region Register Classes and Keymaps
+
 classes = (
     PASTY_OT_view3d_paste_reference,
     PASTY_OT_view3d_paste_plane,
@@ -335,3 +396,6 @@ def unregister_keymaps():
     for km, kmi in addon_keymaps:
         kc.keymaps.remove(km)
         print(f"Unregistered keymap {km.name} for {kmi.idname}")
+
+
+# endregion
