@@ -16,6 +16,7 @@ permissions:
   contents: read
 
 env:
+  # Keep Blender, dprint, and uv state inside the workspace so CI is repeatable.
   BLENDER_USER_CONFIG: ${{ github.workspace }}/.cache/blender-user/config
   BLENDER_USER_EXTENSIONS: ${{ github.workspace }}/.cache/blender-user/extensions
   BLENDER_USER_SCRIPTS: ${{ github.workspace }}/.cache/blender-user/scripts
@@ -210,6 +211,8 @@ jobs:
         run: mise run blender-install ${{ matrix.blender }}
 
       - name: Delete stale Blender cache
+        # GitHub cache entries are immutable. Delete the old key when the installer
+        # replaced a cached Blender patch, then save the refreshed folder below.
         if: ${{ github.event_name != 'pull_request' && steps.blender_cache.outputs.cache-hit == 'true' && steps.install_blender.outputs.cache_updated == 'true' }}
         continue-on-error: true
         shell: bash
@@ -219,6 +222,7 @@ jobs:
         run: gh cache delete "$BLENDER_CACHE_KEY" || true
 
       - name: Save Blender cache
+        # Pull requests cannot reliably update shared caches, so refresh only on trusted events.
         if: ${{ github.event_name != 'pull_request' && (steps.blender_cache.outputs.cache-hit != 'true' || steps.install_blender.outputs.cache_updated == 'true') }}
         continue-on-error: true
         uses: actions/cache/save@v5

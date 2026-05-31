@@ -22,6 +22,7 @@ def main() -> None:
     url = f"https://download.blender.org/release/{release_series(version)}/{asset}"
     root = install_root(version_spec, system, arch)
 
+    # The cache key is the requested series. If a newer patch appears, replace the cached build.
     blender_bin = blender_binary(root, system)
     make_executable(blender_bin, system)
     if blender_bin.exists() and installed_version(blender_bin) != version:
@@ -84,6 +85,7 @@ def resolve_version(version: str, system: str, arch: str) -> str:
         raise RuntimeError(msg)
 
     suffix = blender_asset_suffix(system, arch)
+    # CI asks for series like 4.2 so it stays on the newest official patch.
     return latest_patch_version(version, suffix)
 
 
@@ -107,6 +109,7 @@ def latest_patch_version(series: str, suffix: str) -> str:
 
 
 def parse_latest_patch_version(series: str, suffix: str, html: str) -> str:
+    # Match the platform suffix too; not every Blender series ships every platform.
     pattern = re.compile(rf"blender-({re.escape(series)}\.(\d+))-{re.escape(suffix)}")
     matches = [(int(patch), version) for version, patch in pattern.findall(html)]
     if not matches:
@@ -139,6 +142,7 @@ def blender_asset_suffix(system: str, arch: str) -> str:
 
 def install_root(version: str, system: str, arch: str) -> Path:
     workspace = Path(os.environ.get("GITHUB_WORKSPACE", Path.cwd()))
+    # Store by major.minor so cache refresh can replace 4.2.20 with 4.2.21 in place.
     return workspace / ".cache" / "blender" / f"{version_series(version)}-{system}-{arch}"
 
 
@@ -194,6 +198,7 @@ def extract(archive: Path, root: Path, system: str) -> None:
 
 def extract_linux(archive: Path, root: Path) -> None:
     with tarfile.open(archive) as tar:
+        # Official Linux archives contain a top-level blender-* folder.
         top_level = tar.getmembers()[0].name.split("/")[0]
         tar.extractall(root)
 
@@ -207,6 +212,7 @@ def extract_windows(archive: Path, root: Path) -> None:
     with zipfile.ZipFile(archive) as zip_file:
         zip_file.extractall(root)
 
+    # Windows zip layout has changed before; find blender.exe instead of assuming one folder name.
     candidates = sorted(root.rglob("blender.exe"))
     if not candidates:
         msg = f"could not find blender.exe in {archive}"
@@ -222,6 +228,7 @@ def extract_windows(archive: Path, root: Path) -> None:
 def extract_macos(archive: Path, root: Path) -> None:
     mount = root / "mount"
     mount.mkdir(exist_ok=True)
+    # Blender ships macOS builds as DMGs, so CI has to mount, copy, then detach.
     subprocess.run(
         ["hdiutil", "attach", str(archive), "-mountpoint", str(mount), "-quiet", "-nobrowse"],
         check=True,
@@ -232,6 +239,7 @@ def extract_macos(archive: Path, root: Path) -> None:
     finally:
         subprocess.run(["hdiutil", "detach", str(mount), "-quiet"], check=True)
         mount.rmdir()
+    # GitHub runners can preserve quarantine metadata from downloaded DMGs.
     subprocess.run(["xattr", "-dr", "com.apple.quarantine", str(root / "Blender.app")], check=False)
 
 
@@ -239,6 +247,7 @@ def write_github_value(env_name: str, key: str, value: str) -> None:
     path = os.environ.get(env_name)
     if not path:
         return
+    # GitHub Actions passes outputs/env through files, not stdout parsing.
     with Path(path).open("a", encoding="utf-8") as file:
         file.write(f"{key}={value}\n")
 

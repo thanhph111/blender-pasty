@@ -8,6 +8,7 @@ import bpy
 
 def main() -> None:
     module = load_addon()
+    # This keeps the add-on's public operator surface deliberate.
     expected_operator_ids = {
         "pasty.view3d_copy_image",
         "pasty.view3d_paste_reference",
@@ -24,11 +25,13 @@ def main() -> None:
     assert_sequence_collection_is_available(module)
     assert_first_free_sequence_channel(module)
     assert_object_images_can_be_found(module)
+    assert_pasted_plane_uses_image_name(module)
     assert_shader_paste_replaces_selected_image_node(module)
     assert_shader_paste_links_selected_principled(module)
     assert_shader_paste_handles_multiple_images(module)
     assert_sequence_strips_can_be_added_for_multiple_images(module)
     assert_clipboard_image_file_paths_can_be_loaded(module)
+    assert_clipboard_poll_failure_falls_back_to_paths(module)
     assert_generated_image_can_be_saved(module)
 
     module.register()
@@ -37,6 +40,7 @@ def main() -> None:
 
 def load_addon() -> ModuleType:
     addon_path = Path(__file__).resolve().parents[1] / "__init__.py"
+    # Load the add-on file directly so smoke tests do not depend on a Blender install step.
     spec = util.spec_from_file_location("pasty_smoke", addon_path)
     if spec is None or spec.loader is None:
         msg = f"could not load add-on from {addon_path}"
@@ -74,6 +78,12 @@ def save_test_image(filepath: Path, name: str, color: list[float]) -> None:
         bpy.data.images.remove(image)
 
 
+def ensure_material_nodes(material: bpy.types.Material) -> None:
+    if material.node_tree is None:
+        # Blender 4.2 may still need this. Blender 5.1 already creates node trees.
+        material.use_nodes = True
+
+
 def assert_sequence_collection_is_available(module: ModuleType) -> None:
     scene = bpy.context.scene
     if scene is None:
@@ -90,19 +100,26 @@ def assert_sequence_collection_is_available(module: ModuleType) -> None:
 def assert_first_free_sequence_channel(module: ModuleType) -> None:
     expected_channel = 2
     strips = [
-        SimpleNamespace(channel=1, frame_final_start=1, frame_final_end=51),
-        SimpleNamespace(channel=2, frame_final_start=60, frame_final_end=90),
+        SimpleNamespace(channel=1, left_handle=1, right_handle=51),
+        SimpleNamespace(channel=2, left_handle=60, right_handle=90),
     ]
     channel = module.first_free_sequence_channel(strips, frame_start=1, frame_end=51)
     if channel != expected_channel:
         msg = f"expected channel {expected_channel}, got {channel}"
         raise RuntimeError(msg)
 
+    legacy_strips = [SimpleNamespace(channel=1, frame_final_start=1, frame_final_end=51)]
+    # Keep this old-shape test while Blender 4.2 is the minimum supported version.
+    channel = module.first_free_sequence_channel(legacy_strips, frame_start=1, frame_end=51)
+    if channel != expected_channel:
+        msg = f"expected legacy channel {expected_channel}, got {channel}"
+        raise RuntimeError(msg)
+
 
 def assert_object_images_can_be_found(module: ModuleType) -> None:
     image = bpy.data.images.new("pasty-object-test", 2, 2)
     material = bpy.data.materials.new("pasty-object-test")
-    material.use_nodes = True
+    ensure_material_nodes(material)
     obj = None
     mesh = None
     try:
@@ -131,11 +148,42 @@ def assert_object_images_can_be_found(module: ModuleType) -> None:
         bpy.data.images.remove(image)
 
 
+def assert_pasted_plane_uses_image_name(module: ModuleType) -> None:
+    image = bpy.data.images.new("real-image-name.png", 2, 2)
+    objects_before = set(bpy.data.objects)
+    try:
+        if not module.insert_image_as_reference(bpy.context, image):
+            msg = "could not create reference image"
+            raise RuntimeError(msg)
+
+        # Blender's converter keeps the reference object name when delete_ref=True.
+        # This test protects the earlier reference naming step.
+        result = bpy.ops.image.convert_to_mesh_plane(name_from="IMAGE", delete_ref=True)
+        if result != {"FINISHED"}:
+            msg = f"could not convert reference image to mesh plane: {result}"
+            raise RuntimeError(msg)
+
+        mesh_planes = [
+            obj for obj in bpy.data.objects if obj not in objects_before and obj.type == "MESH"
+        ]
+        if not mesh_planes:
+            msg = "image reference conversion did not create a mesh plane"
+            raise RuntimeError(msg)
+        if mesh_planes[0].name.removesuffix(".001") != "real-image-name":
+            msg = f"expected pasted plane to use image name, got {mesh_planes[0].name}"
+            raise RuntimeError(msg)
+    finally:
+        for obj in list(bpy.data.objects):
+            if obj not in objects_before:
+                bpy.data.objects.remove(obj, do_unlink=True)
+        bpy.data.images.remove(image)
+
+
 def assert_shader_paste_replaces_selected_image_node(module: ModuleType) -> None:
     original_image = bpy.data.images.new("pasty-original-shader-test", 2, 2)
     pasted_image = bpy.data.images.new("pasty-pasted-shader-test", 2, 2)
     material = bpy.data.materials.new("pasty-replace-shader-test")
-    material.use_nodes = True
+    ensure_material_nodes(material)
     try:
         tree = material.node_tree
         image_node = tree.nodes.new("ShaderNodeTexImage")
@@ -166,7 +214,7 @@ def assert_shader_paste_replaces_selected_image_node(module: ModuleType) -> None
 def assert_shader_paste_links_selected_principled(module: ModuleType) -> None:
     image = bpy.data.images.new("pasty-link-shader-test", 2, 2)
     material = bpy.data.materials.new("pasty-link-shader-test")
-    material.use_nodes = True
+    ensure_material_nodes(material)
     try:
         tree = material.node_tree
         principled = next(
@@ -200,7 +248,7 @@ def assert_shader_paste_handles_multiple_images(module: ModuleType) -> None:
     first_image = bpy.data.images.new("pasty-multi-shader-first-test", 2, 2)
     second_image = bpy.data.images.new("pasty-multi-shader-second-test", 2, 2)
     material = bpy.data.materials.new("pasty-multi-shader-test")
-    material.use_nodes = True
+    ensure_material_nodes(material)
     try:
         tree = material.node_tree
         principled = next(
@@ -266,13 +314,16 @@ def assert_sequence_strips_can_be_added_for_multiple_images(module: ModuleType) 
             added_strips = module.add_sequence_image_strips(
                 strips, [first_image, second_image], frame_start=1000
             )
-            if [strip.frame_final_start for strip in added_strips] != [
+            if [module.sequence_strip_start(strip) for strip in added_strips] != [
                 1000,
                 1000 + module.SEQUENCE_STRIP_DURATION,
             ]:
                 msg = "multiple sequence paste did not place strips in a row"
                 raise RuntimeError(msg)
-            if any(strip.frame_final_end <= strip.frame_final_start for strip in added_strips):
+            if any(
+                module.sequence_strip_end(strip) <= module.sequence_strip_start(strip)
+                for strip in added_strips
+            ):
                 msg = "multiple sequence paste created an invalid frame range"
                 raise RuntimeError(msg)
         finally:
@@ -308,6 +359,37 @@ def assert_clipboard_image_file_paths_can_be_loaded(module: ModuleType) -> None:
         finally:
             if loaded_image is not None:
                 bpy.data.images.remove(loaded_image)
+
+
+def assert_clipboard_poll_failure_falls_back_to_paths(module: ModuleType) -> None:
+    with TemporaryDirectory() as temp_dir:
+        filepath = Path(temp_dir) / "pasty fallback path.png"
+        save_test_image(filepath, "pasty-fallback-path-source-test", [0.0, 1.0, 1.0, 1.0])
+
+        original_clipboard_paste = module.__dict__["image_clipboard_paste_result"]
+        fake_context = SimpleNamespace(
+            area=SimpleNamespace(type="VIEW_3D", ui_type="VIEW_3D"),
+            window_manager=SimpleNamespace(clipboard=str(filepath)),
+        )
+        images = []
+        try:
+            # Simulate Blender's image clipboard poll failure without needing a real GUI clipboard.
+            module.__dict__["image_clipboard_paste_result"] = no_clipboard_image_data
+            images = module.paste_images_from_clipboard(fake_context)
+            if len(images) != 1:
+                msg = f"expected one fallback image, got {len(images)}"
+                raise RuntimeError(msg)
+            if images[0].get("pasty.source_path") != str(filepath):
+                msg = "fallback image was not loaded from the clipboard path"
+                raise RuntimeError(msg)
+        finally:
+            module.__dict__["image_clipboard_paste_result"] = original_clipboard_paste
+            for image in images:
+                bpy.data.images.remove(image)
+
+
+def no_clipboard_image_data() -> None:
+    return None
 
 
 if __name__ == "__main__":

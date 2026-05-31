@@ -48,6 +48,8 @@ DEFAULT_IMAGE_FILE_EXTENSIONS = frozenset(
 def temporary_image_editor(area: bpy.types.Area) -> Generator[bpy.types.Area, None, None]:
     """Temporarily switch an area to the Image Editor."""
 
+    # Blender's image clipboard operators belong to the Image Editor.
+    # Pasty borrows the current area for one operator call, then puts it back.
     former_area_type = area.type
     former_ui_type = getattr(area, "ui_type", None)
 
@@ -70,11 +72,21 @@ def paste_image_from_clipboard(context: bpy.types.Context) -> bpy.types.Image | 
 
 def paste_images_from_clipboard(context: bpy.types.Context) -> list[bpy.types.Image]:
     """Paste images from the clipboard into Blender image data-blocks."""
+    # Prefer Blender's native raw-image path. Only fall back to text paths if that fails.
     image = paste_image_data_from_clipboard(context)
     if image is not None:
         return [image]
 
     return paste_image_files_from_clipboard(context)
+
+
+def image_clipboard_paste_result() -> OperatorReturn | None:
+    # Blender raises RuntimeError when the operator's poll check fails.
+    # For Pasty, that is just "no raw image data"; the text-path fallback should still run.
+    try:
+        return bpy.ops.image.clipboard_paste()
+    except RuntimeError:
+        return None
 
 
 def paste_image_data_from_clipboard(context: bpy.types.Context) -> bpy.types.Image | None:
@@ -83,10 +95,12 @@ def paste_image_data_from_clipboard(context: bpy.types.Context) -> bpy.types.Ima
 
     keys_before = set(bpy.data.images.keys())
     with temporary_image_editor(context.area):
-        result = bpy.ops.image.clipboard_paste()
+        result = image_clipboard_paste_result()
     if result != {"FINISHED"}:
         return None
 
+    # The Blender operator returns only a status, not the new image.
+    # Compare image keys before and after to find the data-block it created.
     keys_after = set(bpy.data.images.keys())
     new_keys = keys_after - keys_before
     if not new_keys:
@@ -99,6 +113,7 @@ def paste_image_data_from_clipboard(context: bpy.types.Context) -> bpy.types.Ima
 
 
 def mark_pasted_image(image: bpy.types.Image, source_path: Path | None = None) -> bpy.types.Image:
+    # These custom props make future cleanup/move tools possible without a database.
     image["pasty.pasted"] = True
     image["pasty.paste_time"] = datetime.now(UTC).isoformat()
     if source_path is not None:
@@ -111,6 +126,8 @@ def paste_image_files_from_clipboard(context: bpy.types.Context) -> list[bpy.typ
     if context.window_manager is None:
         return []
 
+    # This is Blender's text clipboard, not a direct OS clipboard reader.
+    # It covers copied paths and file:// URLs without a platform clipboard layer.
     images = []
     for filepath in image_file_paths_from_clipboard_text(context.window_manager.clipboard):
         image = load_image_file(filepath)
@@ -134,19 +151,23 @@ def image_file_paths_from_clipboard_text(text: str) -> list[Path]:
 
 def image_file_path_from_clipboard_line(line: str) -> Path | None:
     value = line.strip().strip("\"'")
+    # Some file managers put an operation marker before the file list.
     if not value or value in {"copy", "cut"}:
         return None
 
     parsed = urlparse(value)
     if parsed.scheme == "file":
+        # File URLs are the common cross-platform text form for copied files.
         value = unquote(parsed.path)
         if parsed.netloc and parsed.netloc != "localhost":
             value = f"//{parsed.netloc}{value}"
         if sys.platform == "win32" and value.startswith("/") and Path(value[1:]).drive:
+            # Windows file URLs look like /C:/path after parsing; pathlib needs C:/path.
             value = value[1:]
 
     path = Path(value).expanduser()
     if not path.is_absolute():
+        # Let Blender resolve //project-relative paths.
         path = Path(bpy.path.abspath(str(path)))
     image_extensions = getattr(bpy.path, "extensions_image", DEFAULT_IMAGE_FILE_EXTENSIONS)
     if path.suffix.lower() not in image_extensions:
@@ -158,6 +179,7 @@ def image_file_path_from_clipboard_line(line: str) -> Path | None:
 
 def load_image_file(filepath: Path) -> bpy.types.Image | None:
     try:
+        # Reuse an already-loaded image for the same path instead of making duplicates.
         image = bpy.data.images.load(str(filepath), check_existing=True)
     except RuntimeError:
         return None
@@ -183,7 +205,11 @@ def copy_image_to_clipboard(context: bpy.types.Context, image: bpy.types.Image) 
         previous_image = getattr(space, "image", None)
         space.image = image
         try:
-            return bpy.ops.image.clipboard_copy() == {"FINISHED"}
+            try:
+                return bpy.ops.image.clipboard_copy() == {"FINISHED"}
+            except RuntimeError:
+                # Copy can fail its poll check on platforms without image clipboard support.
+                return False
         finally:
             space.image = previous_image
 
@@ -195,7 +221,9 @@ def image_from_node(node) -> bpy.types.Image | None:
 
 
 def image_from_material(material: bpy.types.Material | None) -> bpy.types.Image | None:
-    if material is None or not material.use_nodes or material.node_tree is None:
+    # Do not read material.use_nodes here. Blender 5.1 warns that it is going away in 6.0.
+    # In newer Blender, material.node_tree is the useful check.
+    if material is None or material.node_tree is None:
         return None
 
     nodes = material.node_tree.nodes
@@ -216,10 +244,12 @@ def image_from_object(obj: bpy.types.Object | None) -> bpy.types.Image | None:
         return None
 
     if obj.type == "EMPTY" and obj.empty_display_type == "IMAGE":
+        # Image reference objects store their image directly on object.data.
         if isinstance(obj.data, bpy.types.Image):
             return obj.data
         return None
 
+    # Mesh objects do not own images directly; look through their active material.
     return image_from_material(obj.active_material)
 
 
@@ -230,6 +260,7 @@ def active_shader_image(context: bpy.types.Context) -> bpy.types.Image | None:
         return None
 
     nodes = context.space_data.edit_tree.nodes
+    # Active node first matches the thing Blender shows as the user's focused node.
     active_image = image_from_node(nodes.active)
     if active_image is not None:
         return active_image
@@ -244,6 +275,7 @@ def active_shader_image(context: bpy.types.Context) -> bpy.types.Image | None:
 
 
 def active_or_selected_node(nodes, bl_idname: str):
+    # Prefer the active node when it matches; selection can contain several nodes.
     active_node = nodes.active
     if active_node is not None and active_node.bl_idname == bl_idname:
         return active_node
@@ -265,6 +297,7 @@ def link_image_to_principled_base_color(node_tree, image_node, principled_node) 
         if link.to_socket == base_color:
             node_tree.links.remove(link)
 
+    # Blender's Python API names this as input first, then output.
     node_tree.links.new(base_color, color)
 
 
@@ -291,6 +324,7 @@ def paste_images_into_shader_tree(node_tree, images: list[bpy.types.Image], loca
     nodes = node_tree.nodes
     image_node = active_or_selected_node(nodes, "ShaderNodeTexImage")
     if image_node is not None:
+        # Replacing a selected image node is less destructive than adding a duplicate.
         image_node.image = images[0]
         for offset_index, image in enumerate(images[1:], start=1):
             add_shader_image_node(node_tree, image, image_node.location, offset_index)
@@ -300,7 +334,12 @@ def paste_images_into_shader_tree(node_tree, images: list[bpy.types.Image], loca
     for offset_index, image in enumerate(images):
         image_node = add_shader_image_node(node_tree, image, location, offset_index)
         if offset_index == 0 and principled_node is not None:
+            # Multiple paste creates many image nodes, but only the first should auto-link.
             link_image_to_principled_base_color(node_tree, image_node, principled_node)
+
+
+def image_display_name(image: bpy.types.Image) -> str:
+    return bpy.path.display_name(image.name, title_case=False)
 
 
 def insert_image_as_reference(
@@ -311,15 +350,21 @@ def insert_image_as_reference(
     if context.active_object is None:
         return False
 
-    context.active_object.data = image  # ty: ignore[invalid-assignment]
-    context.active_object.location.x += offset_index * VIEW3D_IMAGE_OFFSET
+    reference_object = context.active_object
+    # convert_to_mesh_plane(delete_ref=True) keeps the reference object's name.
+    # Name it from the image now, or pasted planes become "Empty".
+    reference_object.name = image_display_name(image)
+    reference_object.data = image  # ty: ignore[invalid-assignment]
+    reference_object.location.x += offset_index * VIEW3D_IMAGE_OFFSET
     return True
 
 
 def pasted_images_dir() -> Path:
     if bpy.data.filepath:
+        # Saved projects should keep generated clipboard images beside the .blend.
         directory = Path(bpy.path.abspath("//pasty"))
     else:
+        # Unsaved projects have no stable project folder yet.
         directory = Path(gettempdir()) / "pasty"
 
     directory.mkdir(parents=True, exist_ok=True)
@@ -331,6 +376,7 @@ def saved_image_path(image: bpy.types.Image) -> Path:
     if filepath:
         return Path(filepath)
 
+    # Raw clipboard images are generated data-blocks. Sequencer strips need a real file.
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
     filepath = pasted_images_dir() / f"pasty-{timestamp}.png"
     image.save_render(str(filepath))
@@ -340,17 +386,42 @@ def saved_image_path(image: bpy.types.Image) -> Path:
 
 
 def sequence_collection(sequence_editor):
+    # Blender 5 renamed top-level Sequencer access from sequences to strips.
     collection = getattr(sequence_editor, "strips", None)
     if collection is not None:
         return collection
     return sequence_editor.sequences
 
 
+def sequence_strip_start(strip) -> float:
+    # Blender 5.x added handle names and warns that frame_final_* will go away in 6.0.
+    # Keep the old path so Blender 4.2 LTS still works.
+    if hasattr(strip, "left_handle"):
+        return strip.left_handle
+    return strip.frame_final_start
+
+
+def sequence_strip_end(strip) -> float:
+    # See sequence_strip_start() for why this checks both API names.
+    if hasattr(strip, "right_handle"):
+        return strip.right_handle
+    return strip.frame_final_end
+
+
+def set_sequence_strip_end(strip, frame_end: int) -> None:
+    # See sequence_strip_start() for why this writes through both API names.
+    if hasattr(strip, "right_handle"):
+        strip.right_handle = frame_end
+        return
+    strip.frame_final_end = frame_end
+
+
 def strip_overlaps_frame_range(strip, frame_start: int, frame_end: int) -> bool:
-    return strip.frame_final_start < frame_end and frame_start < strip.frame_final_end
+    return sequence_strip_start(strip) < frame_end and frame_start < sequence_strip_end(strip)
 
 
 def first_free_sequence_channel(strips, frame_start: int, frame_end: int) -> int:
+    # Blender Sequencer channels are 1-based and currently capped at 128.
     for channel in range(1, SEQUENCE_MAX_CHANNEL + 1):
         if all(
             strip.channel != channel
@@ -367,6 +438,7 @@ def add_sequence_image_strips(strips, images: list[bpy.types.Image], frame_start
     image_strips = []
     try:
         for offset_index, image in enumerate(images):
+            # Put multiple pasted images in a row so they do not overlap by default.
             strip_start = frame_start + (offset_index * SEQUENCE_STRIP_DURATION)
             strip_end = strip_start + SEQUENCE_STRIP_DURATION
             channel = first_free_sequence_channel(strips, strip_start, strip_end)
@@ -374,9 +446,10 @@ def add_sequence_image_strips(strips, images: list[bpy.types.Image], frame_start
             image_strip = strips.new_image(
                 name=image.name, filepath=str(filepath), channel=channel, frame_start=strip_start
             )
-            image_strip.frame_final_end = strip_end
+            set_sequence_strip_end(image_strip, strip_end)
             image_strips.append(image_strip)
     except RuntimeError:
+        # Avoid leaving half-created strips if a later file cannot be added.
         for image_strip in image_strips:
             strips.remove(image_strip)
         raise
@@ -407,6 +480,7 @@ class PASTY_OT_view3d_copy_image(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
+        # Keep poll cheap. Blender calls it while drawing UI, so do not inspect the clipboard.
         return (
             context.area is not None
             and context.area.type == "VIEW_3D"
@@ -446,6 +520,7 @@ class PASTY_OT_view3d_paste_reference(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
+        # Keep poll cheap. Blender calls it while drawing UI, so do not inspect the clipboard.
         return (
             context.area is not None
             and context.area.type == "VIEW_3D"
@@ -554,16 +629,24 @@ class PASTY_OT_sequence_editor_paste(bpy.types.Operator):
         sequence_editor = context.scene.sequence_editor or context.scene.sequence_editor_create()
         strips = sequence_collection(sequence_editor)
         current_frame = context.scene.frame_current
+        # saved_image_path() gives generated images a filepath, so check this before saving.
+        will_save_generated_images_to_temp = not bpy.data.filepath and any(
+            not bpy.path.abspath(image.filepath) for image in images
+        )
         try:
             add_sequence_image_strips(strips, images, current_frame)
         except RuntimeError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
 
+        if will_save_generated_images_to_temp:
+            self.report({"WARNING"}, "Unsaved .blend: pasted images were saved to the temp folder")
+
         return {"FINISHED"}
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
+        # Keep poll cheap. Blender calls it while drawing UI, so do not inspect the clipboard.
         return context.area is not None and context.area.type == "SEQUENCE_EDITOR"
 
 
@@ -613,6 +696,7 @@ class PASTY_OT_shader_editor_copy(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
+        # Copy poll may inspect the active node, but it still avoids touching the system clipboard.
         return (
             context.area is not None
             and context.area.type == "NODE_EDITOR"
@@ -659,6 +743,7 @@ class PASTY_OT_shader_editor_paste(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
+        # Keep poll cheap. Blender calls it while drawing UI, so do not inspect the clipboard.
         if (
             context.area is not None
             and context.area.type == "NODE_EDITOR"
@@ -741,10 +826,12 @@ def register_keymaps() -> None:
         return
 
     if bpy.context.window_manager is None:
+        # Headless Blender has no window manager. CI still needs register() to succeed.
         return
 
     kc = bpy.context.window_manager.keyconfigs.addon
     if not kc:
+        # Some startup states have no add-on keyconfig yet.
         return
 
     for km_func in keymap_functions:
@@ -753,6 +840,7 @@ def register_keymaps() -> None:
 
 
 def unregister_keymaps() -> None:
+    # Track only keymaps we created so reload/unregister does not touch user shortcuts.
     for km, kmi in reversed(addon_keymaps):
         km.keymap_items.remove(kmi)
     addon_keymaps.clear()

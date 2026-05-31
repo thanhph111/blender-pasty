@@ -5,8 +5,10 @@
 set -euo pipefail
 
 files=()
+# Ask git for tracked and untracked project files, while still respecting .gitignore.
 while IFS= read -r -d '' file; do
     if [[ -e "$file" ]]; then
+        # Some hooks can delete files while fixing them; do not pass stale paths to prek.
         files+=("$file")
     fi
 done < <(git ls-files -z --cached --others --exclude-standard)

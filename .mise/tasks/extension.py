@@ -2,13 +2,15 @@
 
 # [MISE] description="Run Blender extension commands"
 
+import os
 import shutil
 import subprocess
 import sys
 
 
 def main() -> None:
-    blender_path = shutil.which("blender")
+    # Honor BLENDER_BIN for users who keep Blender outside PATH.
+    blender_path = os.environ.get("BLENDER_BIN") or shutil.which("blender")
 
     if blender_path:
         run_blender_extension(blender_path)
@@ -32,6 +34,7 @@ def run_blender_extension(blender_path: str) -> None:
 
 def run_bpy_extension() -> None:
     try:
+        # CI can validate/build through the bpy wheel when a full Blender binary is not present.
         import bpy  # noqa: F401
         from bl_pkg.bl_extension_cli import cli_extension_handler  # ty: ignore[unresolved-import]
     except ImportError as error:

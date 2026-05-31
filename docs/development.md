@@ -114,7 +114,7 @@ Then use the `Attach to Blender` launch config in `blender-pasty.code-workspace`
 
 The first debug run installs `debugpy` into `.cache/blender-debugpy` for Blender's own Python. This keeps Blender away from the repo `.venv`, which may use a different Python version.
 
-Set `BLENDER_BIN` if Blender is not on `PATH`:
+Set `BLENDER_BIN` if Blender is not on `PATH`. Dev commands that launch Blender use it:
 
 ```bash
 BLENDER_BIN=/path/to/blender mise run dev debug --wait

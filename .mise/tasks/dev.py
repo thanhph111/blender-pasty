@@ -69,6 +69,8 @@ def dev_extensions_dir() -> Path:
     if configured:
         return Path(configured).expanduser().resolve()
 
+    # Keep the live dev repository outside Blender's own install folders.
+    # This works on all OSes and avoids admin/root permissions.
     if platform.system() == "Windows":
         return Path.home() / "Documents" / "Blender" / "dev-extensions"
 
@@ -91,6 +93,7 @@ def link_repo() -> None:
     link_path = dev_link_path()
     link_parent.mkdir(parents=True, exist_ok=True)
 
+    # Only replace our own symlink. A real folder here may contain user work.
     if link_path.is_symlink():
         if link_path.resolve() == ROOT:
             print(f"already linked: {link_path} -> {ROOT}")
@@ -115,6 +118,7 @@ def link_repo() -> None:
 
 
 def repo_add() -> None:
+    # Blender repositories point at the parent folder. The add-on folder inside it is the symlink.
     link_repo()
     run(
         [
@@ -156,6 +160,7 @@ def launch_debug(host: str, port: int, *, wait: bool, blender_arg: str | None) -
 
     env = os.environ.copy()
 
+    # Use --python-expr so debugging works without modifying the add-on package.
     expr = (
         "import sys; "
         f"sys.path.insert(0, {str(debugpy_path)!r}); "
@@ -175,6 +180,8 @@ def ensure_debugpy(blender_path: str) -> Path:
     if (target / "debugpy" / "__init__.py").exists():
         return target
 
+    # Install into Blender's Python version, not the repo venv.
+    # Blender and local Python can be different minor versions.
     target.mkdir(parents=True, exist_ok=True)
     run(
         [
@@ -192,6 +199,7 @@ def ensure_debugpy(blender_path: str) -> Path:
 
 
 def blender_python_info(blender_path: str) -> tuple[Path, str]:
+    # Blender prints startup text too, so emit stable marker lines and parse only those.
     expr = (
         "import sys; "
         "print('PASTY_PYTHON=' + sys.executable); "
@@ -225,6 +233,7 @@ def find_blender() -> str | None:
     if blender_path:
         return blender_path
 
+    # The macOS app bundle does not always put blender on PATH.
     macos_path = Path("/Applications/Blender.app/Contents/MacOS/Blender")
     if macos_path.exists():
         return str(macos_path)
