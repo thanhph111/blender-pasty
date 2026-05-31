@@ -27,6 +27,7 @@ jobs:
   commit-messages:
     name: Validate commit messages
     if: github.event_name == 'pull_request'
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -34,6 +35,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Validate conventional commits
         env:
@@ -51,9 +54,12 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Restore mise tool cache
         uses: actions/cache@v5
@@ -97,13 +103,19 @@ jobs:
       - name: Run lint checks
         run: mise run lint
 
+      - name: Minimize uv cache
+        run: mise exec -- uv cache prune --ci
+
   test:
     name: Test
     needs: [lint]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Restore mise tool cache
         uses: actions/cache@v5
@@ -130,6 +142,9 @@ jobs:
 
       - name: Run tests
         run: mise run test
+
+      - name: Minimize uv cache
+        run: mise exec -- uv cache prune --ci
 
   blender:
     name: Blender / ${{ matrix.os }} / ${{ matrix.blender }}
@@ -168,6 +183,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Restore mise tool cache
         uses: actions/cache@v5
@@ -219,9 +236,12 @@ jobs:
     name: Build
     needs: [test, blender]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Restore mise tool cache
         uses: actions/cache@v5
@@ -248,6 +268,9 @@ jobs:
 
       - name: Build add-on
         run: mise run build
+
+      - name: Minimize uv cache
+        run: mise exec -- uv cache prune --ci
 
       - name: Upload add-on
         uses: actions/upload-artifact@v7
