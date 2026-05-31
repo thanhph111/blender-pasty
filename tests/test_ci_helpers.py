@@ -14,6 +14,23 @@ def test_release_series(version: str, expected: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("version", "expected"),
+    [("4.2", "4.2"), ("4.2.21", "4.2"), ("4.5.10", "4.5"), ("5.1.2", "5.1")],
+)
+def test_version_series(version: str, expected: str) -> None:
+    assert install_blender.version_series(version) == expected
+
+
+def test_resolve_version_keeps_exact_patch() -> None:
+    assert install_blender.resolve_version("4.2.21", "Linux", "X64") == "4.2.21"
+
+
+def test_resolve_version_rejects_invalid_version() -> None:
+    with pytest.raises(RuntimeError, match="expected Blender version"):
+        install_blender.resolve_version("4", "Linux", "X64")
+
+
+@pytest.mark.parametrize(
     ("version", "system", "arch", "expected"),
     [
         ("4.2.21", "Linux", "X64", "blender-4.2.21-linux-x64.tar.xz"),
@@ -25,6 +42,24 @@ def test_release_series(version: str, expected: str) -> None:
 )
 def test_blender_asset(version: str, system: str, arch: str, expected: str) -> None:
     assert install_blender.blender_asset(version, system, arch) == expected
+
+
+def test_parse_latest_patch_version() -> None:
+    html = """
+    <a href="blender-4.2.19-linux-x64.tar.xz">older</a>
+    <a href="blender-4.2.21-linux-x64.tar.xz">newer</a>
+    <a href="blender-4.3.1-linux-x64.tar.xz">wrong series</a>
+    <a href="blender-4.2.99-windows-x64.zip">wrong platform</a>
+    """
+
+    version = install_blender.parse_latest_patch_version("4.2", "linux-x64.tar.xz", html)
+
+    assert version == "4.2.21"
+
+
+def test_parse_latest_patch_version_rejects_missing_asset() -> None:
+    with pytest.raises(RuntimeError, match=r"could not find Blender 4\.2 asset"):
+        install_blender.parse_latest_patch_version("4.2", "linux-x64.tar.xz", "")
 
 
 def test_blender_asset_rejects_unsupported_platform() -> None:
@@ -49,9 +84,21 @@ def test_install_root_uses_github_workspace(
 ) -> None:
     monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
 
-    root = install_blender.install_root("5.1.2", "macOS", "ARM64")
+    root = install_blender.install_root("5.1", "macOS", "ARM64")
 
-    assert root == tmp_path / ".cache" / "blender" / "5.1.2-macOS-ARM64"
+    assert root == tmp_path / ".cache" / "blender" / "5.1-macOS-ARM64"
+
+
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        ("Blender 4.2.21 LTS\n", "4.2.21"),
+        ("Blender 5.1.2\nbuild date: 2026-05-01\n", "5.1.2"),
+        ("not Blender\n", None),
+    ],
+)
+def test_parse_blender_version(output: str, expected: str | None) -> None:
+    assert install_blender.parse_blender_version(output) == expected
 
 
 @pytest.mark.parametrize(

@@ -41,6 +41,14 @@ run = [
     "uv run --no-sync python tests/smoke_extension.py",
 ]
 
+[tasks.blender-install]
+description = "Install a Blender build for CI"
+run = "uv run --no-sync python tests/ci/install_blender.py"
+
+[tasks.blender-run]
+description = "Run the CI Blender binary"
+run = "uv run --no-sync python tests/ci/run_blender.py"
+
 [tasks.build]
 description = "Build the Blender extension zip"
 run = [

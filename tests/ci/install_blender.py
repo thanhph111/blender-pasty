@@ -1,6 +1,7 @@
 import argparse
 import os
 import platform
+import re
 import shutil
 import subprocess
 import tarfile
@@ -13,31 +14,44 @@ def main() -> None:
     parser.add_argument("version")
     args = parser.parse_args()
 
-    version = args.version
+    version_spec = args.version
     system = runner_os()
     arch = runner_arch()
+    version = resolve_version(version_spec, system, arch)
     asset = blender_asset(version, system, arch)
     url = f"https://download.blender.org/release/{release_series(version)}/{asset}"
-    root = install_root(version, system, arch)
+    root = install_root(version_spec, system, arch)
 
     blender_bin = blender_binary(root, system)
+    make_executable(blender_bin, system)
+    if blender_bin.exists() and installed_version(blender_bin) != version:
+        print(f"cached Blender does not match {version}; reinstalling")
+        shutil.rmtree(root)
+
+    cache_updated = False
     if not blender_bin.exists():
         root.mkdir(parents=True, exist_ok=True)
         archive = root / asset
         download(url, archive)
         extract(archive, root, system)
         archive.unlink(missing_ok=True)
+        cache_updated = True
 
     blender_bin = blender_binary(root, system)
     if not blender_bin.exists():
         msg = f"Blender executable was not found after installing {version}"
         raise RuntimeError(msg)
 
-    if system != "Windows":
-        blender_bin.chmod(0o755)
+    make_executable(blender_bin, system)
+    actual_version = installed_version(blender_bin)
+    if actual_version != version:
+        msg = f"Blender executable is {actual_version or 'unknown'}, expected {version}"
+        raise RuntimeError(msg)
 
     write_github_value("GITHUB_OUTPUT", "blender-bin", str(blender_bin))
+    write_github_value("GITHUB_OUTPUT", "cache_updated", str(cache_updated).lower())
     write_github_value("GITHUB_ENV", "BLENDER_BIN", str(blender_bin))
+    print(f"Blender {version}")
     print(blender_bin)
 
 
@@ -54,32 +68,78 @@ def runner_arch() -> str:
 
 
 def release_series(version: str) -> str:
+    return f"Blender{version_series(version)}"
+
+
+def version_series(version: str) -> str:
     major, minor, *_ = version.split(".")
-    return f"Blender{major}.{minor}"
+    return f"{major}.{minor}"
+
+
+def resolve_version(version: str, system: str, arch: str) -> str:
+    if is_exact_version(version):
+        return version
+    if not is_version_series(version):
+        msg = f"expected Blender version like 4.2 or 4.2.21, got {version}"
+        raise RuntimeError(msg)
+
+    suffix = blender_asset_suffix(system, arch)
+    return latest_patch_version(version, suffix)
+
+
+def is_exact_version(version: str) -> bool:
+    return re.fullmatch(r"\d+\.\d+\.\d+", version) is not None
+
+
+def is_version_series(version: str) -> bool:
+    return re.fullmatch(r"\d+\.\d+", version) is not None
+
+
+def latest_patch_version(series: str, suffix: str) -> str:
+    url = f"https://download.blender.org/release/Blender{series}/"
+    result = subprocess.run(
+        ["curl", "--fail", "--location", "--retry", "3", "--silent", "--show-error", url],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return parse_latest_patch_version(series, suffix, result.stdout)
+
+
+def parse_latest_patch_version(series: str, suffix: str, html: str) -> str:
+    pattern = re.compile(rf"blender-({re.escape(series)}\.(\d+))-{re.escape(suffix)}")
+    matches = [(int(patch), version) for version, patch in pattern.findall(html)]
+    if not matches:
+        msg = f"could not find Blender {series} asset for {suffix}"
+        raise RuntimeError(msg)
+
+    return max(matches)[1]
 
 
 def blender_asset(version: str, system: str, arch: str) -> str:
+    return f"blender-{version}-{blender_asset_suffix(system, arch)}"
+
+
+def blender_asset_suffix(system: str, arch: str) -> str:
     match (system, arch):
         case ("Linux", "X64"):
-            suffix = "linux-x64.tar.xz"
+            return "linux-x64.tar.xz"
         case ("Windows", "X64"):
-            suffix = "windows-x64.zip"
+            return "windows-x64.zip"
         case ("Windows", "ARM64"):
-            suffix = "windows-arm64.zip"
+            return "windows-arm64.zip"
         case ("macOS", "ARM64"):
-            suffix = "macos-arm64.dmg"
+            return "macos-arm64.dmg"
         case ("macOS", "X64"):
-            suffix = "macos-x64.dmg"
+            return "macos-x64.dmg"
         case _:
             msg = f"unsupported Blender platform: {system} {arch}"
             raise RuntimeError(msg)
 
-    return f"blender-{version}-{suffix}"
-
 
 def install_root(version: str, system: str, arch: str) -> Path:
     workspace = Path(os.environ.get("GITHUB_WORKSPACE", Path.cwd()))
-    return workspace / ".cache" / "blender" / f"{version}-{system}-{arch}"
+    return workspace / ".cache" / "blender" / f"{version_series(version)}-{system}-{arch}"
 
 
 def blender_binary(root: Path, system: str) -> Path:
@@ -88,6 +148,29 @@ def blender_binary(root: Path, system: str) -> Path:
     if system == "Windows":
         return root / "blender.exe"
     return root / "blender"
+
+
+def make_executable(blender_bin: Path, system: str) -> None:
+    if system != "Windows" and blender_bin.exists():
+        blender_bin.chmod(0o755)
+
+
+def installed_version(blender_bin: Path) -> str | None:
+    try:
+        result = subprocess.run(
+            [str(blender_bin), "--version"], check=True, capture_output=True, text=True
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+    return parse_blender_version(result.stdout)
+
+
+def parse_blender_version(output: str) -> str | None:
+    match = re.search(r"^Blender\s+(\d+\.\d+\.\d+)", output, re.MULTILINE)
+    if match is None:
+        return None
+    return match.group(1)
 
 
 def download(url: str, archive: Path) -> None:

@@ -136,50 +136,84 @@ jobs:
     needs: [test]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    permissions:
+      actions: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
-            blender: 4.2.21
+            blender: '4.2'
           - os: ubuntu-24.04
-            blender: 4.5.10
+            blender: '4.5'
           - os: ubuntu-24.04
-            blender: 5.1.2
+            blender: '5.1'
           - os: windows-2025
-            blender: 4.2.21
+            blender: '4.2'
           - os: windows-2025
-            blender: 4.5.10
+            blender: '4.5'
           - os: windows-2025
-            blender: 5.1.2
+            blender: '5.1'
           - os: macos-15
-            blender: 4.2.21
+            blender: '4.2'
           - os: macos-15
-            blender: 4.5.10
+            blender: '4.5'
           - os: macos-15
-            blender: 5.1.2
+            blender: '5.1'
           - os: macos-15-intel
-            blender: 4.2.21
+            blender: '4.2'
           - os: macos-15-intel
-            blender: 4.5.10
+            blender: '4.5'
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Restore Blender cache
+      - name: Restore mise tool cache
         uses: actions/cache@v5
+        with:
+          path: ~/.local/share/mise
+          key: mise-${{ runner.os }}-${{ hashFiles('.mise/mise.lock') }}
+          restore-keys: mise-${{ runner.os }}-
+
+      - name: Set up mise
+        uses: jdx/mise-action@v4
+        with:
+          cache: false
+
+      - name: Restore Blender cache
+        id: blender_cache
+        uses: actions/cache/restore@v5
         with:
           path: .cache/blender
           key: blender-${{ runner.os }}-${{ runner.arch }}-${{ matrix.blender }}
 
       - name: Install Blender
-        run: python tests/ci/install_blender.py ${{ matrix.blender }}
+        id: install_blender
+        run: mise run blender-install ${{ matrix.blender }}
+
+      - name: Delete stale Blender cache
+        if: ${{ github.event_name != 'pull_request' && steps.blender_cache.outputs.cache-hit == 'true' && steps.install_blender.outputs.cache_updated == 'true' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BLENDER_CACHE_KEY: blender-${{ runner.os }}-${{ runner.arch }}-${{ matrix.blender }}
+        run: gh cache delete "$BLENDER_CACHE_KEY" || true
+
+      - name: Save Blender cache
+        if: ${{ github.event_name != 'pull_request' && (steps.blender_cache.outputs.cache-hit != 'true' || steps.install_blender.outputs.cache_updated == 'true') }}
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: .cache/blender
+          key: blender-${{ runner.os }}-${{ runner.arch }}-${{ matrix.blender }}
 
       - name: Print Blender version
-        run: python tests/ci/run_blender.py --version
+        run: mise run blender-run -- --version
 
       - name: Run headless smoke test
-        run: python tests/ci/run_blender.py --background --factory-startup --python-exit-code 1 --python tests/smoke_extension.py
+        run: mise run blender-run -- --background --factory-startup --python-exit-code 1 --python tests/smoke_extension.py
 
   build:
     name: Build
