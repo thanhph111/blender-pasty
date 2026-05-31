@@ -44,6 +44,7 @@ platforms = [
 #
 [permissions]
 clipboard = "Copy and paste images to/from the system clipboard"
+files = "Save pasted clipboard images for sequencer strips"
 
 # Build settings.
 # https://docs.blender.org/manual/en/dev/advanced/extensions/command_line_arguments.html#command-line-args-extension-build
