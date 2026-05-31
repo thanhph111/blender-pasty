@@ -1,0 +1,12 @@
+{
+    "config": {
+        "MD010": {
+            "code_blocks": false,
+            "spaces_per_tab": 4
+        },
+        "MD013": false,
+        "MD024": {
+            "siblings_only": true
+        }
+    }
+}

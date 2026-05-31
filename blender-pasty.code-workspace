@@ -2,31 +2,40 @@
     "folders": [
         {
             "path": ".",
-            "name": "Blender Pasty"
+            "name": "Root"
         }
     ],
     "settings": {
         // Editor
         "editor.tabSize": 4,
-        "editor.rulers": [120],
-        "editor.wordWrapColumn": 120,
+        "editor.rulers": [100],
+        "editor.wordWrapColumn": 100,
         "editor.wordWrap": "bounded",
 
         // Files
         "files.insertFinalNewline": true,
         "files.trimTrailingWhitespace": true,
         "files.trimFinalNewlines": true,
+        "files.associations": {
+            "*.code-workspace": "jsonc"
+        },
         "files.exclude": {
             // Ascending case-sensitive order
             "**/.DS_Store": true,
             "**/.coverage": true,
             "**/.git": true,
             "**/.ruff_cache": true,
+            "**/.ty": true,
             "**/.venv": true,
             "**/Thumbs.db": true,
             "**/__pycache__": true,
             "**/node_modules": true,
             "*.lock": true
+        },
+
+        // Search
+        "search.exclude": {
+            "**/dist": true
         },
 
         // Python
@@ -46,53 +55,61 @@
             "editor.wordWrap": "wordWrapColumn",
             "editor.wordWrapColumn": 100
         },
-        "python.analysis.autoFormatStrings": true,
-        "python.analysis.inlayHints.callArgumentNames": "all",
-        "python.analysis.inlayHints.functionReturnTypes": true,
-        "python.analysis.inlayHints.pytestParameters": true,
-        "python.analysis.inlayHints.variableTypes": true,
-        "python.analysis.supportDocstringTemplate": true,
-        "python.terminal.activateEnvironment": true,
+        "python.defaultInterpreterPath": "${workspaceFolder:Root}/.venv/bin/python",
+        "python.languageServer": "None",
+        "python.terminal.activateEnvironment": false,
 
         // Ruff
         "ruff.configurationPreference": "filesystemFirst",
         "ruff.importStrategy": "fromEnvironment",
+        "ruff.path": ["${workspaceFolder:Root}/.venv/bin/ruff"],
 
-        // Auto Docstring
-        "autoDocstring.docstringFormat": "google-notypes",
+        // ty
+        "ty.importStrategy": "fromEnvironment",
+        "ty.interpreter": ["${workspaceFolder:Root}/.venv/bin/python"],
+        "ty.path": ["${workspaceFolder:Root}/.venv/bin/ty"],
 
         // Dprint formatter
-        "[css]": { "editor.defaultFormatter": "dprint.dprint" },
         "[dockerfile]": { "editor.defaultFormatter": "dprint.dprint" },
-        "[html]": { "editor.defaultFormatter": "dprint.dprint" },
-        "[javascript]": { "editor.defaultFormatter": "dprint.dprint" },
-        "[javascriptreact]": { "editor.defaultFormatter": "dprint.dprint" },
         "[json]": { "editor.defaultFormatter": "dprint.dprint" },
         "[jsonc]": { "editor.defaultFormatter": "dprint.dprint" },
-        "[less]": { "editor.defaultFormatter": "dprint.dprint" },
         "[markdown]": { "editor.defaultFormatter": "dprint.dprint" },
-        "[scss]": { "editor.defaultFormatter": "dprint.dprint" },
         "[toml]": { "editor.defaultFormatter": "dprint.dprint" },
-        "[typescript]": { "editor.defaultFormatter": "dprint.dprint" },
-        "[typescriptreact]": { "editor.defaultFormatter": "dprint.dprint" },
         "[yaml]": { "editor.defaultFormatter": "dprint.dprint" },
 
-        // Blender Development
+        // Blender
         "blender.addon.moduleName": "pasty"
     },
-    "launch": {},
+    "launch": {
+        "version": "0.2.0",
+        "configurations": [
+            {
+                "name": "Attach to Blender",
+                "type": "debugpy",
+                "request": "attach",
+                "connect": {
+                    "host": "127.0.0.1",
+                    "port": 5678
+                },
+                "pathMappings": [
+                    {
+                        "localRoot": "${workspaceFolder:Root}",
+                        "remoteRoot": "${workspaceFolder:Root}"
+                    }
+                ]
+            }
+        ]
+    },
     "extensions": {
         "recommendations": [
             // Ascending case-sensitive order
             "DavidAnson.vscode-markdownlint",
-            "JacquesLucke.blender-development",
             "astral-sh.ty",
             "charliermarsh.ruff",
             "dprint.dprint",
+            "github.vscode-github-actions",
             "ms-python.debugpy",
-            "ms-python.python",
-            "njpwerner.autodocstring",
-            "streetsidesoftware.code-spell-checker"
+            "ms-python.python"
         ]
     }
 }

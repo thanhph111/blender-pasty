@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+# [MISE] description="Validate Conventional Commits message format"
+# [MISE] hide=true
+
+# [USAGE] arg "<commit_msg_file>" help="Path to commit message file"
+
+set -euo pipefail
+
+if [[ -z "${1:-}" ]]; then
+    printf 'usage: mise run check-commit-message <commit-msg-file>\n' >&2
+    exit 2
+fi
+
+commit_msg_file="$1"
+msg=$(head -1 "$commit_msg_file")
+
+if [[ "$msg" =~ ^Merge\ (branch|pull\ request|remote-tracking) ]]; then
+    exit 0
+fi
+
+pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?: .+'
+
+if [[ ! "$msg" =~ $pattern ]]; then
+    echo "ERROR: Commit message does not follow Conventional Commits format."
+    echo ""
+    echo "  Expected: type(scope): description"
+    echo "  Got:      $msg"
+    echo ""
+    echo "  Types: feat fix docs style refactor perf test build ci chore revert"
+    exit 1
+fi

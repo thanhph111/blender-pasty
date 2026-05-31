@@ -1,0 +1,49 @@
+[tools]
+dprint = "latest"
+markdownlint-cli2 = "latest"
+node = "lts"
+prek = "latest"
+python = "3.11"
+uv = "latest"
+
+[env]
+# Keep uv commands from picking up a manually activated virtual environment.
+VIRTUAL_ENV = ""
+
+[shell_alias]
+xbuild = "mise run build"
+xdev = "mise run dev link"
+xlint = "mise run lint"
+xsetup = "mise run setup"
+xvalidate = "mise run validate"
+
+[tasks.deps]
+description = "Install project dependencies"
+run = "uv sync --locked --all-groups"
+
+[tasks.setup]
+description = "Set up the environment for development"
+run = [
+    "mise run deps",
+    "prek install --overwrite",
+    "prek install --overwrite --hook-type commit-msg",
+]
+
+[tasks.validate]
+description = "Validate the Blender extension manifest"
+run = "mise run extension -- validate"
+
+[tasks.test]
+description = "Run tests"
+run = [
+    "uv run --no-sync pytest",
+    "mise run validate",
+    "uv run --no-sync python tests/smoke_extension.py",
+]
+
+[tasks.build]
+description = "Build the Blender extension zip"
+run = [
+    "mkdir -p dist",
+    "mise run extension -- build --output-dir dist",
+]

@@ -1,0 +1,73 @@
+# Configuration file for `prek`, a git hook runner.
+# See https://prek.j178.dev for more information.
+# :schema https://www.schemastore.org/prek.json
+
+[[repos]]
+repo = "https://github.com/pre-commit/pre-commit-hooks"
+rev = "v6.0.0"
+hooks = [
+    { id = "trailing-whitespace" },
+    { id = "end-of-file-fixer" },
+    { id = "check-yaml" },
+    { id = "check-toml" },
+    { id = "check-added-large-files" },
+    { id = "check-case-conflict" },
+    { id = "check-merge-conflict" },
+    { id = "check-executables-have-shebangs" },
+    { id = "check-shebang-scripts-are-executable" },
+]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "markdownlint-cli2"
+name = "markdownlint-cli2"
+entry = "mise x -- markdownlint-cli2 --config .markdownlint-cli2.jsonc --fix"
+language = "system"
+types = ["markdown"]
+
+[[repos.hooks]]
+id = "ruff-format"
+name = "ruff format"
+entry = "uv run --no-sync ruff format --no-cache"
+language = "system"
+types_or = ["python", "pyi"]
+
+[[repos.hooks]]
+id = "ruff-check"
+name = "ruff check"
+entry = "uv run --no-sync ruff check --no-cache --fix"
+language = "system"
+types_or = ["python", "pyi"]
+
+[[repos.hooks]]
+id = "dprint"
+name = "dprint"
+entry = "mise x -- dprint fmt --allow-no-files"
+language = "system"
+types = ["text"]
+
+[[repos.hooks]]
+id = "python-compile"
+name = "python compile"
+entry = "uv run --no-sync python -m compileall -q __init__.py .mise/tasks tests"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos.hooks]]
+id = "python-type"
+name = "python type"
+entry = "uv run --no-sync ty check ."
+language = "system"
+types_or = ["python", "pyi"]
+pass_filenames = false
+
+[[repos.hooks]]
+id = "conventional-commit"
+name = "conventional commit"
+entry = "mise run check-commit-message"
+language = "system"
+stages = ["commit-msg"]
+always_run = true

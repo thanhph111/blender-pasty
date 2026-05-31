@@ -1,65 +1,68 @@
 [project]
 name = "blender-pasty"
-version = "0.0.0"
-description = ""
+version = "0.0.1"
+description = "Paste clipboard images into Blender"
 readme = "README.md"
-requires-python = "==3.11.*"
+requires-python = ">=3.11,<3.12"
 dependencies = []
 
 [dependency-groups]
 build = [
-    "bpy>=4.5.1",
+    "bpy==4.2.*",
 ]
 dev = [
-    "fake-bpy-module>=20250630",
-    "ruff>=0.12.7",
-    "ty>=0.0.1a17",
+    "debugpy",
+    "fake-bpy-module",
+    "pytest",
+    "ruff",
+    "ty",
 ]
 
 [tool.uv]
 environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
 
 [tool.ruff]
-extend-exclude = []
 fix = true
 line-length = 100
+target-version = "py311"
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
 
 [tool.ruff.lint]
-extend-select = [
-    "B", # flake8-bugbear
-    "C4", # flake8-comprehensions
-    "ERA", # flake8-eradicate/eradicate
-    "I", # isort
-    "N", # pep8-naming
-    "PIE", # flake8-pie
-    "PGH", # pygrep
-    "RUF", # ruff checks
-    "SIM", # flake8-simplify
-    "T20", # flake8-print
-    "TCH", # flake8-type-checking
-    "TID", # flake8-tidy-imports
-    "UP", # pyupgrade
-]
+select = ["ALL"]
 ignore = [
-    "T201", # Don't check for print statements
-    "ERA001", # Found commented-out code
-    "N801", # Don't check class names
+    "COM812", # Ruff format owns trailing comma layout.
+    "D", # Short Blender operators are clearer without forced docstrings everywhere.
+    "ISC001", # Ruff format owns string layout.
 ]
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = [
+    "ANN", # Blender callbacks keep the bpy-owned signature shape.
+    "N801", # Blender operator class names use the add-on prefix.
     "N999", # Don't check root __init__.py files
+    "S101", # Blender operators use assertions for runtime context checks.
 ]
-
-[tool.ruff.lint.flake8-tidy-imports]
-ban-relative-imports = "all"
-
-[tool.ruff.lint.isort]
-combine-as-imports = true
-split-on-trailing-comma = false
-
-[tool.pyright]
-typeCheckingMode = "off"
+".mise/tasks/extension.py" = [
+    "PLC0415", # The bpy fallback imports Blender-owned modules only when needed.
+    "S603", # This task intentionally runs the local Blender binary.
+    "T201", # This task prints user-facing command errors.
+]
+".mise/tasks/dev.py" = [
+    "PLR0912", # The command dispatcher is clearer as one small match table.
+    "S603", # This task intentionally runs local Blender and mise commands.
+    "T201", # This task prints user-facing setup instructions.
+]
+"tests/ci/*.py" = [
+    "S202", # CI extracts official Blender archives downloaded from blender.org.
+    "S603", # CI helpers intentionally launch local tools and Blender.
+    "S607", # CI runner tools are expected to be on PATH.
+    "T201", # CI helpers print useful paths in workflow logs.
+]
+"tests/test_*.py" = [
+    "S101", # Pytest uses assert rewriting for clear failures.
+]
