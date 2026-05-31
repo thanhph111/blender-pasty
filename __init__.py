@@ -191,7 +191,8 @@ class PASTY_OT_view3d_paste_plane(bpy.types.Operator):
         if not insert_image_as_reference(context, image):
             self.report({"ERROR"}, "Could not create an image plane")
             return {"CANCELLED"}
-        if bpy.ops.image.convert_to_mesh_plane() != {"FINISHED"}:
+        result = bpy.ops.image.convert_to_mesh_plane(name_from="IMAGE", delete_ref=True)
+        if result != {"FINISHED"}:
             self.report({"ERROR"}, "Could not convert the reference image to a mesh plane")
             return {"CANCELLED"}
         return {"FINISHED"}
