@@ -134,6 +134,47 @@ def active_shader_image(context: bpy.types.Context) -> bpy.types.Image | None:
     return None
 
 
+def active_or_selected_node(nodes, bl_idname: str):
+    active_node = nodes.active
+    if active_node is not None and active_node.bl_idname == bl_idname:
+        return active_node
+
+    for node in nodes:
+        if node.select and node.bl_idname == bl_idname:
+            return node
+
+    return None
+
+
+def link_image_to_principled_base_color(node_tree, image_node, principled_node) -> None:
+    base_color = principled_node.inputs.get("Base Color")
+    color = image_node.outputs.get("Color")
+    if base_color is None or color is None:
+        return
+
+    for link in list(node_tree.links):
+        if link.to_socket == base_color:
+            node_tree.links.remove(link)
+
+    node_tree.links.new(base_color, color)
+
+
+def paste_image_into_shader_tree(node_tree, image: bpy.types.Image, location) -> None:
+    nodes = node_tree.nodes
+    image_node = active_or_selected_node(nodes, "ShaderNodeTexImage")
+    if image_node is not None:
+        image_node.image = image
+        return
+
+    principled_node = active_or_selected_node(nodes, "ShaderNodeBsdfPrincipled")
+    image_node = nodes.new("ShaderNodeTexImage")
+    image_node.location = location
+    image_node.image = image
+
+    if principled_node is not None:
+        link_image_to_principled_base_color(node_tree, image_node, principled_node)
+
+
 def insert_image_as_reference(context: bpy.types.Context, image: bpy.types.Image) -> bool:
     """Insert a pasted image as a reference object in the 3D View."""
     bpy.ops.object.empty_add(type="IMAGE", radius=5.0, align="VIEW")
@@ -464,11 +505,9 @@ class PASTY_OT_shader_editor_paste(bpy.types.Operator):
         if image is None:
             return paste_failed(self)
 
-        node_image = context.space_data.edit_tree.nodes.new("ShaderNodeTexImage")
-        location_x, location_y = context.space_data.cursor_location
-        node_image.location = location_x, location_y
-
-        node_image.image = image
+        paste_image_into_shader_tree(
+            context.space_data.edit_tree, image, context.space_data.cursor_location
+        )
         return {"FINISHED"}
 
     @classmethod

@@ -23,6 +23,8 @@ def main() -> None:
     assert_sequence_collection_is_available(module)
     assert_first_free_sequence_channel(module)
     assert_object_images_can_be_found(module)
+    assert_shader_paste_replaces_selected_image_node(module)
+    assert_shader_paste_links_selected_principled(module)
     assert_generated_image_can_be_saved(module)
 
     module.register()
@@ -112,6 +114,71 @@ def assert_object_images_can_be_found(module: ModuleType) -> None:
             bpy.data.objects.remove(obj)
         if mesh is not None:
             bpy.data.meshes.remove(mesh)
+        bpy.data.materials.remove(material)
+        bpy.data.images.remove(image)
+
+
+def assert_shader_paste_replaces_selected_image_node(module: ModuleType) -> None:
+    original_image = bpy.data.images.new("pasty-original-shader-test", 2, 2)
+    pasted_image = bpy.data.images.new("pasty-pasted-shader-test", 2, 2)
+    material = bpy.data.materials.new("pasty-replace-shader-test")
+    material.use_nodes = True
+    try:
+        tree = material.node_tree
+        image_node = tree.nodes.new("ShaderNodeTexImage")
+        image_node.image = original_image
+        image_node.select = True
+        tree.nodes.active = image_node
+        image_node_count = len(
+            [node for node in tree.nodes if node.bl_idname == "ShaderNodeTexImage"]
+        )
+
+        module.paste_image_into_shader_tree(tree, pasted_image, (40, 20))
+
+        if image_node.image != pasted_image:
+            msg = "shader paste did not replace the selected image texture"
+            raise RuntimeError(msg)
+        if (
+            len([node for node in tree.nodes if node.bl_idname == "ShaderNodeTexImage"])
+            != image_node_count
+        ):
+            msg = "shader paste created a new image texture instead of replacing the selected one"
+            raise RuntimeError(msg)
+    finally:
+        bpy.data.materials.remove(material)
+        bpy.data.images.remove(pasted_image)
+        bpy.data.images.remove(original_image)
+
+
+def assert_shader_paste_links_selected_principled(module: ModuleType) -> None:
+    image = bpy.data.images.new("pasty-link-shader-test", 2, 2)
+    material = bpy.data.materials.new("pasty-link-shader-test")
+    material.use_nodes = True
+    try:
+        tree = material.node_tree
+        principled = next(
+            node for node in tree.nodes if node.bl_idname == "ShaderNodeBsdfPrincipled"
+        )
+        for node in tree.nodes:
+            node.select = False
+        principled.select = True
+        tree.nodes.active = principled
+
+        module.paste_image_into_shader_tree(tree, image, (80, -60))
+
+        image_nodes = [node for node in tree.nodes if node.bl_idname == "ShaderNodeTexImage"]
+        pasted_node = next(node for node in image_nodes if node.image == image)
+        base_color = principled.inputs.get("Base Color")
+        color = pasted_node.outputs.get("Color")
+        if base_color is None or color is None:
+            msg = "shader nodes did not expose expected image color and base color sockets"
+            raise RuntimeError(msg)
+        if not any(
+            link.from_socket == color and link.to_socket == base_color for link in tree.links
+        ):
+            msg = "shader paste did not link image color to Principled Base Color"
+            raise RuntimeError(msg)
+    finally:
         bpy.data.materials.remove(material)
         bpy.data.images.remove(image)
 
