@@ -8,6 +8,8 @@ from typing import ClassVar, Literal
 import bpy
 
 OperatorReturn = set[Literal["RUNNING_MODAL", "CANCELLED", "FINISHED", "PASS_THROUGH", "INTERFACE"]]
+SEQUENCE_STRIP_DURATION = 50
+SEQUENCE_MAX_CHANNEL = 128
 
 # region Image Editor Utilities
 
@@ -96,6 +98,23 @@ def sequence_collection(sequence_editor):
     if collection is not None:
         return collection
     return sequence_editor.sequences
+
+
+def strip_overlaps_frame_range(strip, frame_start: int, frame_end: int) -> bool:
+    return strip.frame_final_start < frame_end and frame_start < strip.frame_final_end
+
+
+def first_free_sequence_channel(strips, frame_start: int, frame_end: int) -> int:
+    for channel in range(1, SEQUENCE_MAX_CHANNEL + 1):
+        if all(
+            strip.channel != channel
+            or not strip_overlaps_frame_range(strip, frame_start, frame_end)
+            for strip in strips
+        ):
+            return channel
+
+    msg = "No free Sequencer channel available"
+    raise RuntimeError(msg)
 
 
 # endregion
@@ -228,11 +247,18 @@ class PASTY_OT_sequence_editor_paste(bpy.types.Operator):
         sequence_editor = context.scene.sequence_editor or context.scene.sequence_editor_create()
         strips = sequence_collection(sequence_editor)
         current_frame = context.scene.frame_current
+        end_frame = current_frame + SEQUENCE_STRIP_DURATION
+        try:
+            channel = first_free_sequence_channel(strips, current_frame, end_frame)
+        except RuntimeError as error:
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
+
         filepath = saved_image_path(image)
         image_strip = strips.new_image(
-            name=image.name, filepath=str(filepath), channel=1, frame_start=current_frame
+            name=image.name, filepath=str(filepath), channel=channel, frame_start=current_frame
         )
-        image_strip.frame_final_end = current_frame + 50
+        image_strip.frame_final_end = end_frame
         return {"FINISHED"}
 
     @classmethod

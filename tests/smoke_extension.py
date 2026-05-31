@@ -1,6 +1,6 @@
 from importlib import util
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import bpy
 
@@ -19,6 +19,7 @@ def main() -> None:
         raise RuntimeError(msg)
 
     assert_sequence_collection_is_available(module)
+    assert_first_free_sequence_channel(module)
     assert_generated_image_can_be_saved(module)
 
     module.register()
@@ -65,6 +66,18 @@ def assert_sequence_collection_is_available(module: ModuleType) -> None:
     collection = module.sequence_collection(sequence_editor)
     if not hasattr(collection, "new_image"):
         msg = "sequence collection does not support new_image"
+        raise RuntimeError(msg)
+
+
+def assert_first_free_sequence_channel(module: ModuleType) -> None:
+    expected_channel = 2
+    strips = [
+        SimpleNamespace(channel=1, frame_final_start=1, frame_final_end=51),
+        SimpleNamespace(channel=2, frame_final_start=60, frame_final_end=90),
+    ]
+    channel = module.first_free_sequence_channel(strips, frame_start=1, frame_end=51)
+    if channel != expected_channel:
+        msg = f"expected channel {expected_channel}, got {channel}"
         raise RuntimeError(msg)
 
 
