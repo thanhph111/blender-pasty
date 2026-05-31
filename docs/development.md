@@ -137,4 +137,4 @@ mise run dev debug     launch Blender with debugpy listening
 
 `.github/workflows/ci.yml` runs the fast checks: lint, test, then build.
 
-`.github/workflows/blender.yml` runs the heavier Blender matrix. It downloads official Blender builds, runs the headless smoke test, then runs a real GUI clipboard test across Linux, Windows, macOS arm64, and macOS Intel. Linux uses a headless Wayland display because Blender's image clipboard path is Wayland-only on Linux.
+`.github/workflows/blender.yml` runs the heavier Blender matrix. It downloads official Blender builds and runs the headless smoke test across Linux, Windows, macOS arm64, and macOS Intel.

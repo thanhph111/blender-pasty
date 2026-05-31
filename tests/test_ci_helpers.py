@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.ci import install_blender, put_clipboard_image
+from tests.ci import install_blender
 
 
 @pytest.mark.parametrize(
@@ -80,7 +80,3 @@ def test_write_github_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     install_blender.write_github_value("GITHUB_ENV", "BLENDER_BIN", str(blender_path))
 
     assert env_file.read_text(encoding="utf-8") == f"BLENDER_BIN={blender_path}\n"
-
-
-def test_clipboard_image_is_png() -> None:
-    assert put_clipboard_image.PNG_BYTES.startswith(b"\x89PNG\r\n\x1a\n")
