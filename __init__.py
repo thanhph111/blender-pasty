@@ -41,7 +41,7 @@ DEFAULT_IMAGE_FILE_EXTENSIONS = frozenset(
     }
 )
 
-# region Image Editor Utilities
+# region Clipboard and Images
 
 
 @contextmanager
@@ -60,14 +60,6 @@ def temporary_image_editor(area: bpy.types.Area) -> Generator[bpy.types.Area, No
         area.type = former_area_type
         if former_ui_type is not None:
             area.ui_type = former_ui_type
-
-
-def paste_image_from_clipboard(context: bpy.types.Context) -> bpy.types.Image | None:
-    """Paste an image from the clipboard into a new Blender image data-block."""
-    images = paste_images_from_clipboard(context)
-    if not images:
-        return None
-    return images[0]
 
 
 def paste_images_from_clipboard(context: bpy.types.Context) -> list[bpy.types.Image]:
@@ -214,6 +206,12 @@ def copy_image_to_clipboard(context: bpy.types.Context, image: bpy.types.Image) 
             space.image = previous_image
 
 
+# endregion
+
+
+# region Image Lookup
+
+
 def image_from_node(node) -> bpy.types.Image | None:
     if node is not None and node.bl_idname == "ShaderNodeTexImage":
         return node.image
@@ -251,6 +249,12 @@ def image_from_object(obj: bpy.types.Object | None) -> bpy.types.Image | None:
 
     # Mesh objects do not own images directly; look through their active material.
     return image_from_material(obj.active_material)
+
+
+# endregion
+
+
+# region Shader Helpers
 
 
 def active_shader_image(context: bpy.types.Context) -> bpy.types.Image | None:
@@ -301,20 +305,12 @@ def link_image_to_principled_base_color(node_tree, image_node, principled_node) 
     node_tree.links.new(base_color, color)
 
 
-def offset_shader_node_location(location, offset_index: int) -> tuple[float, float]:
-    location_x, location_y = location
-    return location_x, location_y - (offset_index * SHADER_NODE_VERTICAL_SPACING)
-
-
 def add_shader_image_node(node_tree, image: bpy.types.Image, location, offset_index: int = 0):
     image_node = node_tree.nodes.new("ShaderNodeTexImage")
-    image_node.location = offset_shader_node_location(location, offset_index)
+    location_x, location_y = location
+    image_node.location = location_x, location_y - (offset_index * SHADER_NODE_VERTICAL_SPACING)
     image_node.image = image
     return image_node
-
-
-def paste_image_into_shader_tree(node_tree, image: bpy.types.Image, location) -> None:
-    paste_images_into_shader_tree(node_tree, [image], location)
 
 
 def paste_images_into_shader_tree(node_tree, images: list[bpy.types.Image], location) -> None:
@@ -338,8 +334,10 @@ def paste_images_into_shader_tree(node_tree, images: list[bpy.types.Image], loca
             link_image_to_principled_base_color(node_tree, image_node, principled_node)
 
 
-def image_display_name(image: bpy.types.Image) -> str:
-    return bpy.path.display_name(image.name, title_case=False)
+# endregion
+
+
+# region View3D Helpers
 
 
 def insert_image_as_reference(
@@ -353,10 +351,16 @@ def insert_image_as_reference(
     reference_object = context.active_object
     # convert_to_mesh_plane(delete_ref=True) keeps the reference object's name.
     # Name it from the image now, or pasted planes become "Empty".
-    reference_object.name = image_display_name(image)
+    reference_object.name = bpy.path.display_name(image.name, title_case=False)
     reference_object.data = image  # ty: ignore[invalid-assignment]
     reference_object.location.x += offset_index * VIEW3D_IMAGE_OFFSET
     return True
+
+
+# endregion
+
+
+# region Sequencer Helpers
 
 
 def pasted_images_dir() -> Path:
@@ -459,7 +463,7 @@ def add_sequence_image_strips(strips, images: list[bpy.types.Image], frame_start
 # endregion
 
 
-# region View3D Copy Image Operator
+# region View3D Operators
 
 
 class PASTY_OT_view3d_copy_image(bpy.types.Operator):
@@ -493,12 +497,6 @@ def view3d_copy_image_context_menu_draw(self, _context: bpy.types.Context) -> No
     """Draw the Copy Image operator in the 3D View object context menu."""
     self.layout.separator()
     self.layout.operator(PASTY_OT_view3d_copy_image.bl_idname, icon="COPYDOWN")
-
-
-# endregion
-
-
-# region View3D Paste Reference Operator
 
 
 class PASTY_OT_view3d_paste_reference(bpy.types.Operator):
@@ -535,28 +533,6 @@ def view3d_paste_reference_image_add_menu_draw(self, _context: bpy.types.Context
     self.layout.operator(PASTY_OT_view3d_paste_reference.bl_idname, icon="IMAGE_REFERENCE")
 
 
-def view3d_paste_reference_image_add_menu_km(
-    kc: bpy.types.KeyConfig,
-) -> tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]:
-    """Add a keymap item for the Paste as Reference operator in the 3D View."""
-    km = kc.keymaps.new(name="3D View", space_type="VIEW_3D")
-    kmi = km.keymap_items.new(
-        PASTY_OT_view3d_paste_reference.bl_idname,
-        type="V",
-        value="PRESS",
-        ctrl=True,
-        shift=True,
-        alt=True,
-    )
-    return km, kmi
-
-
-# endregion
-
-
-# region View3D Paste Plane Operator
-
-
 class PASTY_OT_view3d_paste_plane(bpy.types.Operator):
     """Paste image from the clipboard as a plane"""
 
@@ -589,25 +565,14 @@ class PASTY_OT_view3d_paste_plane(bpy.types.Operator):
 
 
 def view3d_paste_plane_image_add_menu_draw(self, _context: bpy.types.Context) -> None:
-    """Draw the Paste as Reference operator in the 3D View Add Image menu."""
+    """Draw the Paste as Plane operator in the 3D View Add Image menu."""
     self.layout.operator(PASTY_OT_view3d_paste_plane.bl_idname, icon="FILE_IMAGE")
-
-
-def view3d_paste_plane_image_add_menu_km(
-    kc: bpy.types.KeyConfig,
-) -> tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]:
-    """Add a keymap item for the Paste as Plane operator in the 3D View."""
-    km = kc.keymaps.new(name="3D View", space_type="VIEW_3D")
-    kmi = km.keymap_items.new(
-        PASTY_OT_view3d_paste_plane.bl_idname, type="V", value="PRESS", ctrl=True, shift=True
-    )
-    return km, kmi
 
 
 # endregion
 
 
-# region Sequence Editor Paste Operator
+# region Sequencer Operator
 
 
 class PASTY_OT_sequence_editor_paste(bpy.types.Operator):
@@ -656,26 +621,10 @@ def sequence_editor_paste_context_menu_draw(self, _context: bpy.types.Context) -
     self.layout.operator(PASTY_OT_sequence_editor_paste.bl_idname, icon="IMAGE_PLANE")
 
 
-def sequence_editor_paste_context_menu_km(
-    kc: bpy.types.KeyConfig,
-) -> tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]:
-    """Add a keymap item for the Paste from Clipboard operator in the Sequence Editor."""
-    km = kc.keymaps.new(name="Sequencer", space_type="SEQUENCE_EDITOR")
-    kmi = km.keymap_items.new(
-        PASTY_OT_sequence_editor_paste.bl_idname,
-        type="V",
-        value="PRESS",
-        ctrl=True,
-        shift=True,
-        alt=True,
-    )
-    return km, kmi
-
-
 # endregion
 
 
-# region Shader Editor Copy Operator
+# region Shader Editor Operators
 
 
 class PASTY_OT_shader_editor_copy(bpy.types.Operator):
@@ -708,12 +657,6 @@ class PASTY_OT_shader_editor_copy(bpy.types.Operator):
 def shader_editor_copy_context_menu_draw(self, _context: bpy.types.Context) -> None:
     """Draw the Copy Image operator in the Shader Editor context menu."""
     self.layout.operator(PASTY_OT_shader_editor_copy.bl_idname, icon="COPYDOWN")
-
-
-# endregion
-
-
-# region Shader Editor Paste Operator
 
 
 class PASTY_OT_shader_editor_paste(bpy.types.Operator):
@@ -757,25 +700,14 @@ class PASTY_OT_shader_editor_paste(bpy.types.Operator):
 
 
 def shader_editor_paste_context_menu_draw(self, _context: bpy.types.Context) -> None:
-    """Draw the Paste operator in the Sequence Editor context menu."""
+    """Draw the Paste operator in the Shader Editor context menu."""
     self.layout.operator(PASTY_OT_shader_editor_paste.bl_idname, icon="FILE_IMAGE")
-
-
-def shader_editor_paste_context_menu_km(
-    kc: bpy.types.KeyConfig,
-) -> tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]:
-    """Add a keymap item for the Paste from Clipboard operator in the Sequence Editor."""
-    km = kc.keymaps.new(name="Node Editor", space_type="NODE_EDITOR")
-    kmi = km.keymap_items.new(
-        PASTY_OT_shader_editor_paste.bl_idname, type="V", value="PRESS", ctrl=True, shift=True
-    )
-    return km, kmi
 
 
 # endregion
 
 
-# region Register Classes and Keymaps
+# region Registration
 
 classes = (
     PASTY_OT_view3d_copy_image,
@@ -813,11 +745,26 @@ def unregister() -> None:
 
 addon_keymaps: list[tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]] = []
 
-keymap_functions = (
-    view3d_paste_reference_image_add_menu_km,
-    view3d_paste_plane_image_add_menu_km,
-    sequence_editor_paste_context_menu_km,
-    shader_editor_paste_context_menu_km,
+keymap_specs = (
+    (
+        "3D View",
+        "VIEW_3D",
+        PASTY_OT_view3d_paste_reference.bl_idname,
+        {"ctrl": True, "shift": True, "alt": True},
+    ),
+    ("3D View", "VIEW_3D", PASTY_OT_view3d_paste_plane.bl_idname, {"ctrl": True, "shift": True}),
+    (
+        "Sequencer",
+        "SEQUENCE_EDITOR",
+        PASTY_OT_sequence_editor_paste.bl_idname,
+        {"ctrl": True, "shift": True, "alt": True},
+    ),
+    (
+        "Node Editor",
+        "NODE_EDITOR",
+        PASTY_OT_shader_editor_paste.bl_idname,
+        {"ctrl": True, "shift": True},
+    ),
 )
 
 
@@ -834,8 +781,9 @@ def register_keymaps() -> None:
         # Some startup states have no add-on keyconfig yet.
         return
 
-    for km_func in keymap_functions:
-        km, kmi = km_func(kc)
+    for keymap_name, space_type, operator_id, modifiers in keymap_specs:
+        km = kc.keymaps.new(name=keymap_name, space_type=space_type)
+        kmi = km.keymap_items.new(operator_id, type="V", value="PRESS", **modifiers)
         addon_keymaps.append((km, kmi))
 
 

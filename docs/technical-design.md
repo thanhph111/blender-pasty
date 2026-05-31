@@ -43,7 +43,7 @@ flowchart TD
     I -->|"No"| J["Pasty reports that no compatible image was found"]
 ```
 
-The shared paste path lives in `temporary_image_editor()`, `paste_image_from_clipboard()`, and the image file helpers in `__init__.py`.
+The shared paste path lives in `temporary_image_editor()`, `paste_images_from_clipboard()`, and the image file helpers in `__init__.py`.
 
 ## Poll rules
 

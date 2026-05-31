@@ -194,7 +194,7 @@ def assert_shader_paste_replaces_selected_image_node(module: ModuleType) -> None
             [node for node in tree.nodes if node.bl_idname == "ShaderNodeTexImage"]
         )
 
-        module.paste_image_into_shader_tree(tree, pasted_image, (40, 20))
+        module.paste_images_into_shader_tree(tree, [pasted_image], (40, 20))
 
         if image_node.image != pasted_image:
             msg = "shader paste did not replace the selected image texture"
@@ -225,7 +225,7 @@ def assert_shader_paste_links_selected_principled(module: ModuleType) -> None:
         principled.select = True
         tree.nodes.active = principled
 
-        module.paste_image_into_shader_tree(tree, image, (80, -60))
+        module.paste_images_into_shader_tree(tree, [image], (80, -60))
 
         image_nodes = [node for node in tree.nodes if node.bl_idname == "ShaderNodeTexImage"]
         pasted_node = next(node for node in image_nodes if node.image == image)
