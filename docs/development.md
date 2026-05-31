@@ -135,6 +135,6 @@ mise run dev debug     launch Blender with debugpy listening
 
 ## CI
 
-`.github/workflows/ci.yml` runs the fast checks: lint, test, then build.
+`.github/workflows/ci.yml` runs lint, test, the Blender matrix, then build.
 
-`.github/workflows/blender.yml` runs the heavier Blender matrix. It downloads official Blender builds and runs the headless smoke test across Linux, Windows, macOS arm64, and macOS Intel.
+The Blender matrix downloads official Blender builds and runs the headless smoke test across Linux, Windows, macOS arm64, and macOS Intel. Build waits for those checks before uploading the zip.

@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -14,6 +16,9 @@ permissions:
   contents: read
 
 env:
+  BLENDER_USER_CONFIG: ${{ github.workspace }}/.cache/blender-user/config
+  BLENDER_USER_EXTENSIONS: ${{ github.workspace }}/.cache/blender-user/extensions
+  BLENDER_USER_SCRIPTS: ${{ github.workspace }}/.cache/blender-user/scripts
   DPRINT_CACHE_DIR: ${{ github.workspace }}/.cache/dprint
   MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
@@ -126,9 +131,59 @@ jobs:
       - name: Run tests
         run: mise run test
 
+  blender:
+    name: Blender / ${{ matrix.os }} / ${{ matrix.blender }}
+    needs: [test]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            blender: 4.2.21
+          - os: ubuntu-24.04
+            blender: 4.5.10
+          - os: ubuntu-24.04
+            blender: 5.1.2
+          - os: windows-2025
+            blender: 4.2.21
+          - os: windows-2025
+            blender: 4.5.10
+          - os: windows-2025
+            blender: 5.1.2
+          - os: macos-15
+            blender: 4.2.21
+          - os: macos-15
+            blender: 4.5.10
+          - os: macos-15
+            blender: 5.1.2
+          - os: macos-15-intel
+            blender: 4.2.21
+          - os: macos-15-intel
+            blender: 4.5.10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Restore Blender cache
+        uses: actions/cache@v5
+        with:
+          path: .cache/blender
+          key: blender-${{ runner.os }}-${{ runner.arch }}-${{ matrix.blender }}
+
+      - name: Install Blender
+        run: python tests/ci/install_blender.py ${{ matrix.blender }}
+
+      - name: Print Blender version
+        run: python tests/ci/run_blender.py --version
+
+      - name: Run headless smoke test
+        run: python tests/ci/run_blender.py --background --factory-startup --python-exit-code 1 --python tests/smoke_extension.py
+
   build:
     name: Build
-    needs: [test]
+    needs: [test, blender]
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
