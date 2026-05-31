@@ -1,0 +1,192 @@
+# Technical design
+
+Pasty is a Blender extension for pasting image data from the system clipboard into common Blender work areas.
+
+| Area          | Result             |
+| ------------- | ------------------ |
+| 3D View       | Reference image    |
+| 3D View       | Mesh plane         |
+| Sequencer     | Image strip        |
+| Shader Editor | Image texture node |
+
+## Core idea
+
+Pasty uses Blender's own image clipboard operator:
+
+```python
+bpy.ops.image.clipboard_paste()
+```
+
+That is the main design choice.
+
+Pasty does not try to read the operating system clipboard itself. It lets Blender do that work.
+
+This matters because clipboard image handling is different across macOS, Windows, Linux X11, Linux Wayland, screenshots, browsers, Photoshop, ShareX, and copied image files. Rebuilding all of that inside the add-on creates a lot of fragile platform code.
+
+## Paste flow
+
+Blender's image clipboard paste operator belongs to the Image Editor. If the user is in the 3D View, Sequencer, or Shader Editor, Pasty briefly switches the current area to the Image Editor, runs Blender's paste command, then switches the area back.
+
+```mermaid
+flowchart TD
+    A["User runs a Pasty paste command"] --> B["Pasty remembers the current editor"]
+    B --> C["Pasty switches that area to the Image Editor"]
+    C --> D["Blender reads the system clipboard"]
+    D --> E{"Did Blender create an image?"}
+    E -->|"No"| F["Pasty reports that no compatible image was found"]
+    E -->|"Yes"| G["Pasty restores the original editor"]
+    G --> H["Pasty uses the new image in the target area"]
+```
+
+The shared paste path lives in `temporary_image_editor()` and `paste_image_from_clipboard()` in `__init__.py`.
+
+## Poll rules
+
+Blender calls an operator's `poll()` method to decide whether a button, menu item, or shortcut should be enabled.
+
+Pasty keeps `poll()` simple. It only checks the current editor and mode.
+
+For example, a 3D View paste operator checks that Blender is in the 3D View and Object Mode. A Shader Editor paste operator checks that the current node editor has an active node tree.
+
+Pasty does not check the clipboard inside `poll()`.
+
+That is intentional. Checking the clipboard would require temporarily switching the current area to the Image Editor. Blender may call `poll()` often while drawing UI, so changing editors there can cause flicker or strange behavior.
+
+Clipboard work only happens when the user actually runs a paste command.
+
+## 3D view reference paste
+
+When you paste as a reference, Pasty asks Blender to create an image from the clipboard, adds an Image Empty in the 3D View, and assigns the pasted image to that Empty. The result is a normal Blender image reference object.
+
+## 3D view mesh plane paste
+
+When you paste as a mesh plane, Pasty first creates the same image reference object. It then asks Blender to convert that selected reference image into a textured mesh plane.
+
+Pasty uses Blender's built-in operator:
+
+```python
+bpy.ops.image.convert_to_mesh_plane()
+```
+
+This is better than manually building the mesh, material, UVs, and texture node setup. Blender already owns that behavior.
+
+## Shader editor paste
+
+When you paste in the Shader Editor, Pasty creates an Image Texture node, assigns the pasted image to that node, and places the node at the node editor cursor. This keeps the node operation small and predictable.
+
+## Sequencer paste
+
+The Sequencer is different.
+
+Blender's clipboard paste creates a generated image data-block. A data-block is Blender's internal object for data such as images, meshes, and materials. A generated image can exist inside Blender without a real file path.
+
+Sequencer image strips need a real image file path.
+
+So Sequencer paste has one extra step: Pasty saves the pasted image as a PNG before it creates the image strip.
+
+If the `.blend` file is saved, Pasty writes to:
+
+```text
+//pasty
+```
+
+That means a `pasty` folder next to the `.blend` file.
+
+If the `.blend` file has not been saved yet, Pasty writes to the system temp folder.
+
+Because of this, the extension manifest declares both permissions:
+
+```toml
+[permissions]
+clipboard = "Copy and paste images to/from the system clipboard"
+files = "Save pasted clipboard images for sequencer strips"
+```
+
+## Comparison with ImagePaste
+
+[ImagePaste](https://github.com/b-init/ImagePaste) is the older Blender add-on in this space. Its README says it supports pasting images into the Image Editor, Video Sequencer, Shader Editor, and 3D Viewport. It also says the add-on is expected to be deprecated as the functionality is integrated into Blender.
+
+ImagePaste reads the operating system clipboard with platform-specific code, saves an image file, then loads that file into Blender.
+
+It has separate clipboard code for each platform:
+
+- macOS uses a native pasteboard module plus `osascript`
+- Linux uses a bundled `xclip` binary
+- Windows uses PowerShell and .NET clipboard APIs
+
+That approach made sense before Blender had better built-in image clipboard support, but it creates many moving parts.
+
+Pasty asks Blender to read the clipboard, receives a Blender image data-block, and uses that image directly. It saves a file only when Sequencer needs one.
+
+The goal is not to become a bigger ImagePaste. The goal is to be smaller, more native to modern Blender, and less platform-fragile.
+
+## ImagePaste problems this design avoids
+
+ImagePaste's public issue tracker shows the cost of owning platform clipboard code and old Blender APIs. These examples were checked on May 31, 2026.
+
+- macOS native pasteboard import failures: [#55](https://github.com/b-init/ImagePaste/issues/55), [#60](https://github.com/b-init/ImagePaste/issues/60), [#61](https://github.com/b-init/ImagePaste/issues/61)
+- Linux `xclip` or process failures: [#35](https://github.com/b-init/ImagePaste/issues/35), [#51](https://github.com/b-init/ImagePaste/issues/51), [#62](https://github.com/b-init/ImagePaste/issues/62)
+- Windows clipboard format gaps: [#23](https://github.com/b-init/ImagePaste/issues/23), [#38](https://github.com/b-init/ImagePaste/issues/38), [#39](https://github.com/b-init/ImagePaste/issues/39)
+- Blender API churn around reference images and image planes: [#56](https://github.com/b-init/ImagePaste/issues/56), [#59](https://github.com/b-init/ImagePaste/issues/59), [#66](https://github.com/b-init/ImagePaste/issues/66)
+- Blender 5 Sequencer API breakage: [#65](https://github.com/b-init/ImagePaste/issues/65)
+- Save-handler/operator breakage in Blender 4.5: [#64](https://github.com/b-init/ImagePaste/issues/64)
+- Unclear save folder behavior: [#26](https://github.com/b-init/ImagePaste/issues/26)
+
+Pasty avoids most of this by not owning clipboard extraction. Blender owns clipboard image reading. Pasty only decides what to do with the pasted Blender image.
+
+## What Pasty does not try to do
+
+Pasty intentionally does not try to be a full ImagePaste clone.
+
+It does not currently support:
+
+- copying Blender images back to the system clipboard
+- multiple pasted images at once
+- custom file naming preferences
+- moving pasted images after save
+- packing pasted images into the `.blend`
+- replacing existing node image data
+- SVG or text clipboard handling
+
+Those features can be added later, but they should be added only when they fit the small native design.
+
+## Current limits
+
+Pasty depends on Blender's own clipboard support.
+
+That means behavior can differ by platform. Blender's image clipboard support is strongest on Windows, macOS, and Linux Wayland.
+
+Linux X11 may be weaker depending on Blender and the desktop environment.
+
+This is still better than shipping our own Linux clipboard stack, because Blender itself is the owner of clipboard support.
+
+## Design rules
+
+- Use Blender's own operators when Blender already owns the behavior.
+- Do not read the operating system clipboard directly unless Blender's own API cannot do the job.
+- Do not switch editor areas inside `poll()`.
+- Only write files when Blender needs a real file path.
+- Keep the add-on small. A paste utility should not become a clipboard framework.
+
+## Testing
+
+Headless tests can check:
+
+- the add-on imports
+- operators are registered
+- operators are unregistered
+- generated images can be saved to disk
+
+Real clipboard behavior needs a GUI smoke test, because headless Blender cannot fully prove system clipboard behavior.
+
+Manual GUI checks should cover copying an image to the clipboard, then pasting as a 3D reference, as a 3D plane, into the Sequencer, and into the Shader Editor.
+
+## References
+
+- [Blender image operators](https://docs.blender.org/api/4.2/bpy.ops.image.html)
+- [Blender extension manifest permissions](https://docs.blender.org/manual/en/4.2/advanced/extensions/getting_started.html)
+- [ImagePaste repository](https://github.com/b-init/ImagePaste)
+- [ImagePaste operators](https://github.com/b-init/ImagePaste/blob/main/imagepaste/operators.py)
+- [ImagePaste macOS clipboard code](https://github.com/b-init/ImagePaste/blob/main/imagepaste/clipboard/darwin/darwin.py)
+- [ImagePaste Linux clipboard code](https://github.com/b-init/ImagePaste/blob/main/imagepaste/clipboard/linux/linux.py)
+- [ImagePaste Windows clipboard code](https://github.com/b-init/ImagePaste/blob/main/imagepaste/clipboard/windows/windows.py)
