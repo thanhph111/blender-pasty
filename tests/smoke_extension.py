@@ -18,6 +18,7 @@ def main() -> None:
         msg = f"unexpected operator ids: {sorted(actual_operator_ids)}"
         raise RuntimeError(msg)
 
+    assert_sequence_collection_is_available(module)
     assert_generated_image_can_be_saved(module)
 
     module.register()
@@ -52,6 +53,19 @@ def assert_generated_image_can_be_saved(module: ModuleType) -> None:
         if filepath is not None:
             filepath.unlink(missing_ok=True)
         bpy.data.images.remove(image)
+
+
+def assert_sequence_collection_is_available(module: ModuleType) -> None:
+    scene = bpy.context.scene
+    if scene is None:
+        msg = "no active scene"
+        raise RuntimeError(msg)
+
+    sequence_editor = scene.sequence_editor or scene.sequence_editor_create()
+    collection = module.sequence_collection(sequence_editor)
+    if not hasattr(collection, "new_image"):
+        msg = "sequence collection does not support new_image"
+        raise RuntimeError(msg)
 
 
 if __name__ == "__main__":

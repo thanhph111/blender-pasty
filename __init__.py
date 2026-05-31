@@ -91,6 +91,13 @@ def saved_image_path(image: bpy.types.Image) -> Path:
     return filepath
 
 
+def sequence_collection(sequence_editor):
+    collection = getattr(sequence_editor, "strips", None)
+    if collection is not None:
+        return collection
+    return sequence_editor.sequences
+
+
 # endregion
 
 
@@ -219,7 +226,7 @@ class PASTY_OT_sequence_editor_paste(bpy.types.Operator):
             return paste_failed(self)
 
         sequence_editor = context.scene.sequence_editor or context.scene.sequence_editor_create()
-        strips = sequence_editor.strips
+        strips = sequence_collection(sequence_editor)
         current_frame = context.scene.frame_current
         filepath = saved_image_path(image)
         image_strip = strips.new_image(
