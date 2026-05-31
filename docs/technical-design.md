@@ -21,7 +21,7 @@ That is the main design choice.
 
 Pasty does not try to read the operating system image clipboard itself. It lets Blender do that work.
 
-If Blender does not find image data, Pasty checks Blender's plain text clipboard for image file paths and `file://` URLs. That keeps copied-path workflows useful without adding a platform-specific clipboard layer.
+If Blender does not find image data, Pasty checks Blender's plain text clipboard for image file paths and `file://` URLs. Several paths become several pasted images. That keeps copied-path workflows useful without adding a platform-specific clipboard layer.
 
 This matters because clipboard image handling is different across macOS, Windows, Linux X11, Linux Wayland, screenshots, browsers, Photoshop, ShareX, and copied image files. Rebuilding all of that inside the add-on creates a lot of fragile platform code.
 
@@ -38,7 +38,7 @@ flowchart TD
     E -->|"Yes"| F["Pasty restores the original editor"]
     F --> G["Pasty uses the new image in the target area"]
     E -->|"No"| H["Pasty checks text clipboard paths and file URLs"]
-    H --> I{"Did Pasty load an image file?"}
+    H --> I{"Did Pasty load image files?"}
     I -->|"Yes"| G
     I -->|"No"| J["Pasty reports that no compatible image was found"]
 ```
@@ -63,6 +63,8 @@ Clipboard work only happens when the user actually runs a paste command.
 
 When you paste as a reference, Pasty asks Blender to create an image from the clipboard, adds an Image Empty in the 3D View, and assigns the pasted image to that Empty. The result is a normal Blender image reference object.
 
+If the clipboard fallback finds several image files, Pasty creates one reference object per image and offsets them slightly.
+
 ## 3D view mesh plane paste
 
 When you paste as a mesh plane, Pasty first creates the same image reference object. It then asks Blender to convert that selected reference image into a textured mesh plane.
@@ -75,6 +77,8 @@ bpy.ops.image.convert_to_mesh_plane()
 
 This is better than manually building the mesh, material, UVs, and texture node setup. Blender already owns that behavior.
 
+If the clipboard fallback finds several image files, Pasty creates one mesh plane per image and offsets them slightly.
+
 ## Shader editor paste
 
 When you paste in the Shader Editor, Pasty uses the current node selection:
@@ -82,6 +86,8 @@ When you paste in the Shader Editor, Pasty uses the current node selection:
 - If an Image Texture node is selected, Pasty replaces that node's image.
 - Otherwise Pasty creates an Image Texture node at the cursor.
 - If a Principled BSDF node is selected, Pasty links the image color to Base Color.
+
+If the clipboard fallback finds several image files, Pasty creates a vertical stack of image texture nodes. If an Image Texture node is selected, the first image replaces it and the remaining images become nearby nodes.
 
 ## Sequencer paste
 
@@ -92,6 +98,8 @@ Blender's clipboard paste creates a generated image data-block. A data-block is 
 Sequencer image strips need a real image file path.
 
 So Sequencer paste has one extra step for generated images: Pasty saves the pasted image as a PNG before it creates the image strip. If the image came from a file path, Pasty reuses that path.
+
+If the clipboard fallback finds several image files, Pasty creates strips in a row starting at the current frame.
 
 If the `.blend` file is saved, Pasty writes to:
 
@@ -149,7 +157,6 @@ Pasty intentionally does not try to be a full ImagePaste clone.
 
 It does not currently support:
 
-- multiple pasted images at once
 - custom file naming preferences
 - moving pasted images after save
 - packing pasted images into the `.blend`
@@ -163,6 +170,8 @@ Those features can be added later, but they should be added only when they fit t
 Pasty depends on Blender's own clipboard support.
 
 That means behavior can differ by platform. Blender's image clipboard support is strongest on Windows, macOS, and Linux Wayland.
+
+Multiple-image paste works for clipboard text that exposes several image paths or file URLs. It does not mean Blender's native image clipboard operator can read several raw clipboard images at once.
 
 Linux X11 may be weaker depending on Blender and the desktop environment.
 
@@ -185,6 +194,7 @@ Headless tests can check:
 - operators are unregistered
 - generated images can be saved to disk
 - image file paths and file URLs can be loaded
+- multiple image file paths create multiple target items
 
 Real clipboard behavior needs a local GUI smoke test, because headless Blender cannot fully prove system clipboard behavior. Hosted CI runners do not give us a stable system clipboard.
 

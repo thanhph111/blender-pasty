@@ -26,6 +26,8 @@ def main() -> None:
     assert_object_images_can_be_found(module)
     assert_shader_paste_replaces_selected_image_node(module)
     assert_shader_paste_links_selected_principled(module)
+    assert_shader_paste_handles_multiple_images(module)
+    assert_sequence_strips_can_be_added_for_multiple_images(module)
     assert_clipboard_image_file_paths_can_be_loaded(module)
     assert_generated_image_can_be_saved(module)
 
@@ -60,6 +62,15 @@ def assert_generated_image_can_be_saved(module: ModuleType) -> None:
     finally:
         if filepath is not None:
             filepath.unlink(missing_ok=True)
+        bpy.data.images.remove(image)
+
+
+def save_test_image(filepath: Path, name: str, color: list[float]) -> None:
+    image = bpy.data.images.new(name, 2, 2)
+    try:
+        image.pixels.foreach_set(color * 4)
+        image.save_render(str(filepath))
+    finally:
         bpy.data.images.remove(image)
 
 
@@ -185,28 +196,113 @@ def assert_shader_paste_links_selected_principled(module: ModuleType) -> None:
         bpy.data.images.remove(image)
 
 
+def assert_shader_paste_handles_multiple_images(module: ModuleType) -> None:
+    first_image = bpy.data.images.new("pasty-multi-shader-first-test", 2, 2)
+    second_image = bpy.data.images.new("pasty-multi-shader-second-test", 2, 2)
+    material = bpy.data.materials.new("pasty-multi-shader-test")
+    material.use_nodes = True
+    try:
+        tree = material.node_tree
+        principled = next(
+            node for node in tree.nodes if node.bl_idname == "ShaderNodeBsdfPrincipled"
+        )
+        for node in tree.nodes:
+            node.select = False
+        principled.select = True
+        tree.nodes.active = principled
+
+        images = [first_image, second_image]
+        module.paste_images_into_shader_tree(tree, images, (120, 20))
+
+        image_nodes = [
+            node
+            for node in tree.nodes
+            if node.bl_idname == "ShaderNodeTexImage" and node.image in images
+        ]
+        if len(image_nodes) != len(images):
+            msg = f"expected two pasted shader image nodes, got {len(image_nodes)}"
+            raise RuntimeError(msg)
+
+        first_node = next(node for node in image_nodes if node.image == first_image)
+        second_node = next(node for node in image_nodes if node.image == second_image)
+        if second_node.location.y != first_node.location.y - module.SHADER_NODE_VERTICAL_SPACING:
+            msg = "multiple shader paste did not offset the second image node"
+            raise RuntimeError(msg)
+
+        base_color = principled.inputs.get("Base Color")
+        color = first_node.outputs.get("Color")
+        if not any(
+            link.from_socket == color and link.to_socket == base_color for link in tree.links
+        ):
+            msg = "multiple shader paste did not link the first image"
+            raise RuntimeError(msg)
+    finally:
+        bpy.data.materials.remove(material)
+        bpy.data.images.remove(second_image)
+        bpy.data.images.remove(first_image)
+
+
+def assert_sequence_strips_can_be_added_for_multiple_images(module: ModuleType) -> None:
+    scene = bpy.context.scene
+    if scene is None:
+        msg = "no active scene"
+        raise RuntimeError(msg)
+
+    with TemporaryDirectory() as temp_dir:
+        first_filepath = Path(temp_dir) / "pasty first strip.png"
+        second_filepath = Path(temp_dir) / "pasty second strip.png"
+        save_test_image(first_filepath, "pasty-first-strip-source-test", [1.0, 0.0, 0.0, 1.0])
+        save_test_image(second_filepath, "pasty-second-strip-source-test", [0.0, 0.0, 1.0, 1.0])
+        first_image = module.load_image_file(first_filepath)
+        second_image = module.load_image_file(second_filepath)
+        added_strips = []
+        try:
+            if first_image is None or second_image is None:
+                msg = "could not load sequence image files"
+                raise RuntimeError(msg)
+
+            sequence_editor = scene.sequence_editor or scene.sequence_editor_create()
+            strips = module.sequence_collection(sequence_editor)
+            added_strips = module.add_sequence_image_strips(
+                strips, [first_image, second_image], frame_start=1000
+            )
+            if [strip.frame_final_start for strip in added_strips] != [
+                1000,
+                1000 + module.SEQUENCE_STRIP_DURATION,
+            ]:
+                msg = "multiple sequence paste did not place strips in a row"
+                raise RuntimeError(msg)
+            if any(strip.frame_final_end <= strip.frame_final_start for strip in added_strips):
+                msg = "multiple sequence paste created an invalid frame range"
+                raise RuntimeError(msg)
+        finally:
+            for strip in added_strips:
+                strips.remove(strip)
+            if second_image is not None:
+                bpy.data.images.remove(second_image)
+            if first_image is not None:
+                bpy.data.images.remove(first_image)
+
+
 def assert_clipboard_image_file_paths_can_be_loaded(module: ModuleType) -> None:
     with TemporaryDirectory() as temp_dir:
-        filepath = Path(temp_dir) / "pasty clipboard path.png"
-        image = bpy.data.images.new("pasty-file-path-source-test", 2, 2)
-        try:
-            image.pixels.foreach_set([0.0, 1.0, 0.0, 1.0] * 4)
-            image.save_render(str(filepath))
-        finally:
-            bpy.data.images.remove(image)
+        first_filepath = Path(temp_dir) / "pasty first clipboard path.png"
+        second_filepath = Path(temp_dir) / "pasty second clipboard path.png"
+        save_test_image(first_filepath, "pasty-first-path-source-test", [0.0, 1.0, 0.0, 1.0])
+        save_test_image(second_filepath, "pasty-second-path-source-test", [1.0, 1.0, 0.0, 1.0])
 
-        text = f"copy\n{filepath.as_uri()}\n{filepath}\n"
+        text = f"copy\n{first_filepath.as_uri()}\n{second_filepath}\n{first_filepath}\n"
         paths = module.image_file_paths_from_clipboard_text(text)
-        if paths != [filepath]:
+        if paths != [first_filepath, second_filepath]:
             msg = f"unexpected clipboard image file paths: {paths}"
             raise RuntimeError(msg)
 
-        loaded_image = module.load_image_file(filepath)
+        loaded_image = module.load_image_file(first_filepath)
         try:
             if loaded_image is None:
                 msg = "could not load clipboard image file"
                 raise RuntimeError(msg)
-            if loaded_image.get("pasty.source_path") != str(filepath):
+            if loaded_image.get("pasty.source_path") != str(first_filepath):
                 msg = "loaded clipboard image file was not stamped with its source path"
                 raise RuntimeError(msg)
         finally:

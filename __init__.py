@@ -12,6 +12,8 @@ import bpy
 OperatorReturn = set[Literal["RUNNING_MODAL", "CANCELLED", "FINISHED", "PASS_THROUGH", "INTERFACE"]]
 SEQUENCE_STRIP_DURATION = 50
 SEQUENCE_MAX_CHANNEL = 128
+VIEW3D_IMAGE_OFFSET = 1.0
+SHADER_NODE_VERTICAL_SPACING = 260
 DEFAULT_IMAGE_FILE_EXTENSIONS = frozenset(
     {
         ".bmp",
@@ -60,11 +62,19 @@ def temporary_image_editor(area: bpy.types.Area) -> Generator[bpy.types.Area, No
 
 def paste_image_from_clipboard(context: bpy.types.Context) -> bpy.types.Image | None:
     """Paste an image from the clipboard into a new Blender image data-block."""
+    images = paste_images_from_clipboard(context)
+    if not images:
+        return None
+    return images[0]
+
+
+def paste_images_from_clipboard(context: bpy.types.Context) -> list[bpy.types.Image]:
+    """Paste images from the clipboard into Blender image data-blocks."""
     image = paste_image_data_from_clipboard(context)
     if image is not None:
-        return image
+        return [image]
 
-    return paste_image_file_from_clipboard(context)
+    return paste_image_files_from_clipboard(context)
 
 
 def paste_image_data_from_clipboard(context: bpy.types.Context) -> bpy.types.Image | None:
@@ -97,16 +107,17 @@ def mark_pasted_image(image: bpy.types.Image, source_path: Path | None = None) -
     return image
 
 
-def paste_image_file_from_clipboard(context: bpy.types.Context) -> bpy.types.Image | None:
+def paste_image_files_from_clipboard(context: bpy.types.Context) -> list[bpy.types.Image]:
     if context.window_manager is None:
-        return None
+        return []
 
+    images = []
     for filepath in image_file_paths_from_clipboard_text(context.window_manager.clipboard):
         image = load_image_file(filepath)
         if image is not None:
-            return image
+            images.append(image)
 
-    return None
+    return images
 
 
 def image_file_paths_from_clipboard_text(text: str) -> list[Path]:
@@ -257,29 +268,51 @@ def link_image_to_principled_base_color(node_tree, image_node, principled_node) 
     node_tree.links.new(base_color, color)
 
 
+def offset_shader_node_location(location, offset_index: int) -> tuple[float, float]:
+    location_x, location_y = location
+    return location_x, location_y - (offset_index * SHADER_NODE_VERTICAL_SPACING)
+
+
+def add_shader_image_node(node_tree, image: bpy.types.Image, location, offset_index: int = 0):
+    image_node = node_tree.nodes.new("ShaderNodeTexImage")
+    image_node.location = offset_shader_node_location(location, offset_index)
+    image_node.image = image
+    return image_node
+
+
 def paste_image_into_shader_tree(node_tree, image: bpy.types.Image, location) -> None:
+    paste_images_into_shader_tree(node_tree, [image], location)
+
+
+def paste_images_into_shader_tree(node_tree, images: list[bpy.types.Image], location) -> None:
+    if not images:
+        return
+
     nodes = node_tree.nodes
     image_node = active_or_selected_node(nodes, "ShaderNodeTexImage")
     if image_node is not None:
-        image_node.image = image
+        image_node.image = images[0]
+        for offset_index, image in enumerate(images[1:], start=1):
+            add_shader_image_node(node_tree, image, image_node.location, offset_index)
         return
 
     principled_node = active_or_selected_node(nodes, "ShaderNodeBsdfPrincipled")
-    image_node = nodes.new("ShaderNodeTexImage")
-    image_node.location = location
-    image_node.image = image
-
-    if principled_node is not None:
-        link_image_to_principled_base_color(node_tree, image_node, principled_node)
+    for offset_index, image in enumerate(images):
+        image_node = add_shader_image_node(node_tree, image, location, offset_index)
+        if offset_index == 0 and principled_node is not None:
+            link_image_to_principled_base_color(node_tree, image_node, principled_node)
 
 
-def insert_image_as_reference(context: bpy.types.Context, image: bpy.types.Image) -> bool:
+def insert_image_as_reference(
+    context: bpy.types.Context, image: bpy.types.Image, offset_index: int = 0
+) -> bool:
     """Insert a pasted image as a reference object in the 3D View."""
     bpy.ops.object.empty_add(type="IMAGE", radius=5.0, align="VIEW")
     if context.active_object is None:
         return False
 
     context.active_object.data = image  # ty: ignore[invalid-assignment]
+    context.active_object.location.x += offset_index * VIEW3D_IMAGE_OFFSET
     return True
 
 
@@ -328,6 +361,26 @@ def first_free_sequence_channel(strips, frame_start: int, frame_end: int) -> int
 
     msg = "No free Sequencer channel available"
     raise RuntimeError(msg)
+
+
+def add_sequence_image_strips(strips, images: list[bpy.types.Image], frame_start: int) -> list:
+    image_strips = []
+    try:
+        for offset_index, image in enumerate(images):
+            strip_start = frame_start + (offset_index * SEQUENCE_STRIP_DURATION)
+            strip_end = strip_start + SEQUENCE_STRIP_DURATION
+            channel = first_free_sequence_channel(strips, strip_start, strip_end)
+            filepath = saved_image_path(image)
+            image_strip = strips.new_image(
+                name=image.name, filepath=str(filepath), channel=channel, frame_start=strip_start
+            )
+            image_strip.frame_final_end = strip_end
+            image_strips.append(image_strip)
+    except RuntimeError:
+        for image_strip in image_strips:
+            strips.remove(image_strip)
+        raise
+    return image_strips
 
 
 # endregion
@@ -382,12 +435,13 @@ class PASTY_OT_view3d_paste_reference(bpy.types.Operator):
     bl_options: ClassVar[set[str]] = {"UNDO_GROUPED"}  # ty: ignore[invalid-attribute-override]
 
     def execute(self, context: bpy.types.Context) -> OperatorReturn:
-        image = paste_image_from_clipboard(context)
-        if image is None:
+        images = paste_images_from_clipboard(context)
+        if not images:
             return paste_failed(self)
-        if not insert_image_as_reference(context, image):
-            self.report({"ERROR"}, "Could not create a reference image")
-            return {"CANCELLED"}
+        for offset_index, image in enumerate(images):
+            if not insert_image_as_reference(context, image, offset_index):
+                self.report({"ERROR"}, "Could not create a reference image")
+                return {"CANCELLED"}
         return {"FINISHED"}
 
     @classmethod
@@ -436,16 +490,17 @@ class PASTY_OT_view3d_paste_plane(bpy.types.Operator):
     bl_options: ClassVar[set[str]] = {"UNDO_GROUPED"}  # ty: ignore[invalid-attribute-override]
 
     def execute(self, context: bpy.types.Context) -> OperatorReturn:
-        image = paste_image_from_clipboard(context)
-        if image is None:
+        images = paste_images_from_clipboard(context)
+        if not images:
             return paste_failed(self)
-        if not insert_image_as_reference(context, image):
-            self.report({"ERROR"}, "Could not create an image plane")
-            return {"CANCELLED"}
-        result = bpy.ops.image.convert_to_mesh_plane(name_from="IMAGE", delete_ref=True)
-        if result != {"FINISHED"}:
-            self.report({"ERROR"}, "Could not convert the reference image to a mesh plane")
-            return {"CANCELLED"}
+        for offset_index, image in enumerate(images):
+            if not insert_image_as_reference(context, image, offset_index):
+                self.report({"ERROR"}, "Could not create an image plane")
+                return {"CANCELLED"}
+            result = bpy.ops.image.convert_to_mesh_plane(name_from="IMAGE", delete_ref=True)
+            if result != {"FINISHED"}:
+                self.report({"ERROR"}, "Could not convert the reference image to a mesh plane")
+                return {"CANCELLED"}
         return {"FINISHED"}
 
     @classmethod
@@ -492,25 +547,19 @@ class PASTY_OT_sequence_editor_paste(bpy.types.Operator):
             self.report({"ERROR"}, "No active scene")
             return {"CANCELLED"}
 
-        image = paste_image_from_clipboard(context)
-        if image is None:
+        images = paste_images_from_clipboard(context)
+        if not images:
             return paste_failed(self)
 
         sequence_editor = context.scene.sequence_editor or context.scene.sequence_editor_create()
         strips = sequence_collection(sequence_editor)
         current_frame = context.scene.frame_current
-        end_frame = current_frame + SEQUENCE_STRIP_DURATION
         try:
-            channel = first_free_sequence_channel(strips, current_frame, end_frame)
+            add_sequence_image_strips(strips, images, current_frame)
         except RuntimeError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
 
-        filepath = saved_image_path(image)
-        image_strip = strips.new_image(
-            name=image.name, filepath=str(filepath), channel=channel, frame_start=current_frame
-        )
-        image_strip.frame_final_end = end_frame
         return {"FINISHED"}
 
     @classmethod
@@ -599,12 +648,12 @@ class PASTY_OT_shader_editor_paste(bpy.types.Operator):
             "No active node tree found in the Node Editor"
         )
 
-        image = paste_image_from_clipboard(context)
-        if image is None:
+        images = paste_images_from_clipboard(context)
+        if not images:
             return paste_failed(self)
 
-        paste_image_into_shader_tree(
-            context.space_data.edit_tree, image, context.space_data.cursor_location
+        paste_images_into_shader_tree(
+            context.space_data.edit_tree, images, context.space_data.cursor_location
         )
         return {"FINISHED"}
 

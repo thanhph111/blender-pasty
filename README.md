@@ -2,7 +2,7 @@
 
 Pasty is a Blender add-on for pasting images from the system clipboard.
 
-It first uses Blender's native image clipboard support. If the clipboard contains image file paths or `file://` URLs instead, Pasty can load those files too.
+It first uses Blender's native image clipboard support. If the clipboard contains image file paths or `file://` URLs instead, Pasty can load those files too. Several image paths paste as several images.
 
 It adds paste actions for:
 
