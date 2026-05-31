@@ -1,15 +1,43 @@
+import sys
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import gettempdir
 from typing import ClassVar, Literal
+from urllib.parse import unquote, urlparse
 
 import bpy
 
 OperatorReturn = set[Literal["RUNNING_MODAL", "CANCELLED", "FINISHED", "PASS_THROUGH", "INTERFACE"]]
 SEQUENCE_STRIP_DURATION = 50
 SEQUENCE_MAX_CHANNEL = 128
+DEFAULT_IMAGE_FILE_EXTENSIONS = frozenset(
+    {
+        ".bmp",
+        ".cin",
+        ".dds",
+        ".dpx",
+        ".exr",
+        ".hdr",
+        ".j2c",
+        ".jp2",
+        ".jpeg",
+        ".jpg",
+        ".pdd",
+        ".png",
+        ".psb",
+        ".psd",
+        ".rgb",
+        ".rgba",
+        ".sgi",
+        ".tga",
+        ".tif",
+        ".tiff",
+        ".tx",
+        ".webp",
+    }
+)
 
 # region Image Editor Utilities
 
@@ -32,6 +60,14 @@ def temporary_image_editor(area: bpy.types.Area) -> Generator[bpy.types.Area, No
 
 def paste_image_from_clipboard(context: bpy.types.Context) -> bpy.types.Image | None:
     """Paste an image from the clipboard into a new Blender image data-block."""
+    image = paste_image_data_from_clipboard(context)
+    if image is not None:
+        return image
+
+    return paste_image_file_from_clipboard(context)
+
+
+def paste_image_data_from_clipboard(context: bpy.types.Context) -> bpy.types.Image | None:
     if context.area is None:
         return None
 
@@ -49,10 +85,72 @@ def paste_image_from_clipboard(context: bpy.types.Context) -> bpy.types.Image | 
     image_id = new_keys.pop()
     image = bpy.data.images[image_id]
 
+    return mark_pasted_image(image)
+
+
+def mark_pasted_image(image: bpy.types.Image, source_path: Path | None = None) -> bpy.types.Image:
     image["pasty.pasted"] = True
     image["pasty.paste_time"] = datetime.now(UTC).isoformat()
+    if source_path is not None:
+        image["pasty.source_path"] = str(source_path)
 
     return image
+
+
+def paste_image_file_from_clipboard(context: bpy.types.Context) -> bpy.types.Image | None:
+    if context.window_manager is None:
+        return None
+
+    for filepath in image_file_paths_from_clipboard_text(context.window_manager.clipboard):
+        image = load_image_file(filepath)
+        if image is not None:
+            return image
+
+    return None
+
+
+def image_file_paths_from_clipboard_text(text: str) -> list[Path]:
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    for line in text.splitlines():
+        path = image_file_path_from_clipboard_line(line)
+        if path is None or path in seen:
+            continue
+        paths.append(path)
+        seen.add(path)
+    return paths
+
+
+def image_file_path_from_clipboard_line(line: str) -> Path | None:
+    value = line.strip().strip("\"'")
+    if not value or value in {"copy", "cut"}:
+        return None
+
+    parsed = urlparse(value)
+    if parsed.scheme == "file":
+        value = unquote(parsed.path)
+        if parsed.netloc and parsed.netloc != "localhost":
+            value = f"//{parsed.netloc}{value}"
+        if sys.platform == "win32" and value.startswith("/") and Path(value[1:]).drive:
+            value = value[1:]
+
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = Path(bpy.path.abspath(str(path)))
+    image_extensions = getattr(bpy.path, "extensions_image", DEFAULT_IMAGE_FILE_EXTENSIONS)
+    if path.suffix.lower() not in image_extensions:
+        return None
+    if not path.is_file():
+        return None
+    return path
+
+
+def load_image_file(filepath: Path) -> bpy.types.Image | None:
+    try:
+        image = bpy.data.images.load(str(filepath), check_existing=True)
+    except RuntimeError:
+        return None
+    return mark_pasted_image(image, filepath)
 
 
 def paste_failed(operator: bpy.types.Operator) -> OperatorReturn:

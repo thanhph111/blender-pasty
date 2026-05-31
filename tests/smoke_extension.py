@@ -1,5 +1,6 @@
 from importlib import util
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import ModuleType, SimpleNamespace
 
 import bpy
@@ -25,6 +26,7 @@ def main() -> None:
     assert_object_images_can_be_found(module)
     assert_shader_paste_replaces_selected_image_node(module)
     assert_shader_paste_links_selected_principled(module)
+    assert_clipboard_image_file_paths_can_be_loaded(module)
     assert_generated_image_can_be_saved(module)
 
     module.register()
@@ -181,6 +183,35 @@ def assert_shader_paste_links_selected_principled(module: ModuleType) -> None:
     finally:
         bpy.data.materials.remove(material)
         bpy.data.images.remove(image)
+
+
+def assert_clipboard_image_file_paths_can_be_loaded(module: ModuleType) -> None:
+    with TemporaryDirectory() as temp_dir:
+        filepath = Path(temp_dir) / "pasty clipboard path.png"
+        image = bpy.data.images.new("pasty-file-path-source-test", 2, 2)
+        try:
+            image.pixels.foreach_set([0.0, 1.0, 0.0, 1.0] * 4)
+            image.save_render(str(filepath))
+        finally:
+            bpy.data.images.remove(image)
+
+        text = f"copy\n{filepath.as_uri()}\n{filepath}\n"
+        paths = module.image_file_paths_from_clipboard_text(text)
+        if paths != [filepath]:
+            msg = f"unexpected clipboard image file paths: {paths}"
+            raise RuntimeError(msg)
+
+        loaded_image = module.load_image_file(filepath)
+        try:
+            if loaded_image is None:
+                msg = "could not load clipboard image file"
+                raise RuntimeError(msg)
+            if loaded_image.get("pasty.source_path") != str(filepath):
+                msg = "loaded clipboard image file was not stamped with its source path"
+                raise RuntimeError(msg)
+        finally:
+            if loaded_image is not None:
+                bpy.data.images.remove(loaded_image)
 
 
 if __name__ == "__main__":

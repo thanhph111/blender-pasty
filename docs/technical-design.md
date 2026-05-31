@@ -19,7 +19,9 @@ bpy.ops.image.clipboard_paste()
 
 That is the main design choice.
 
-Pasty does not try to read the operating system clipboard itself. It lets Blender do that work.
+Pasty does not try to read the operating system image clipboard itself. It lets Blender do that work.
+
+If Blender does not find image data, Pasty checks Blender's plain text clipboard for image file paths and `file://` URLs. That keeps copied-path workflows useful without adding a platform-specific clipboard layer.
 
 This matters because clipboard image handling is different across macOS, Windows, Linux X11, Linux Wayland, screenshots, browsers, Photoshop, ShareX, and copied image files. Rebuilding all of that inside the add-on creates a lot of fragile platform code.
 
@@ -33,12 +35,15 @@ flowchart TD
     B --> C["Pasty switches that area to the Image Editor"]
     C --> D["Blender reads the system clipboard"]
     D --> E{"Did Blender create an image?"}
-    E -->|"No"| F["Pasty reports that no compatible image was found"]
-    E -->|"Yes"| G["Pasty restores the original editor"]
-    G --> H["Pasty uses the new image in the target area"]
+    E -->|"Yes"| F["Pasty restores the original editor"]
+    F --> G["Pasty uses the new image in the target area"]
+    E -->|"No"| H["Pasty checks text clipboard paths and file URLs"]
+    H --> I{"Did Pasty load an image file?"}
+    I -->|"Yes"| G
+    I -->|"No"| J["Pasty reports that no compatible image was found"]
 ```
 
-The shared paste path lives in `temporary_image_editor()` and `paste_image_from_clipboard()` in `__init__.py`.
+The shared paste path lives in `temporary_image_editor()`, `paste_image_from_clipboard()`, and the image file helpers in `__init__.py`.
 
 ## Poll rules
 
@@ -72,7 +77,11 @@ This is better than manually building the mesh, material, UVs, and texture node 
 
 ## Shader editor paste
 
-When you paste in the Shader Editor, Pasty creates an Image Texture node, assigns the pasted image to that node, and places the node at the node editor cursor. This keeps the node operation small and predictable.
+When you paste in the Shader Editor, Pasty uses the current node selection:
+
+- If an Image Texture node is selected, Pasty replaces that node's image.
+- Otherwise Pasty creates an Image Texture node at the cursor.
+- If a Principled BSDF node is selected, Pasty links the image color to Base Color.
 
 ## Sequencer paste
 
@@ -82,7 +91,7 @@ Blender's clipboard paste creates a generated image data-block. A data-block is 
 
 Sequencer image strips need a real image file path.
 
-So Sequencer paste has one extra step: Pasty saves the pasted image as a PNG before it creates the image strip.
+So Sequencer paste has one extra step for generated images: Pasty saves the pasted image as a PNG before it creates the image strip. If the image came from a file path, Pasty reuses that path.
 
 If the `.blend` file is saved, Pasty writes to:
 
@@ -99,7 +108,7 @@ Because of this, the extension manifest declares both permissions:
 ```toml
 [permissions]
 clipboard = "Copy and paste images to/from the system clipboard"
-files = "Save pasted clipboard images for sequencer strips"
+files = "Load image files and save generated clipboard images"
 ```
 
 ## Comparison with ImagePaste
@@ -116,7 +125,7 @@ It has separate clipboard code for each platform:
 
 That approach made sense before Blender had better built-in image clipboard support, but it creates many moving parts.
 
-Pasty asks Blender to read the clipboard, receives a Blender image data-block, and uses that image directly. It saves a file only when Sequencer needs one.
+Pasty asks Blender to read the clipboard, receives a Blender image data-block, and uses that image directly. It falls back to plain text paths or file URLs only when Blender does not find image data. It saves a file only when Sequencer needs one.
 
 The goal is not to become a bigger ImagePaste. The goal is to be smaller, more native to modern Blender, and less platform-fragile.
 
@@ -132,7 +141,7 @@ ImagePaste's public issue tracker shows the cost of owning platform clipboard co
 - Save-handler/operator breakage in Blender 4.5: [#64](https://github.com/b-init/ImagePaste/issues/64)
 - Unclear save folder behavior: [#26](https://github.com/b-init/ImagePaste/issues/26)
 
-Pasty avoids most of this by not owning clipboard extraction. Blender owns clipboard image reading. Pasty only decides what to do with the pasted Blender image.
+Pasty avoids most of this by not owning platform clipboard extraction. Blender owns clipboard image reading. Pasty only decides what to do with the pasted Blender image, or with image file paths exposed through Blender's text clipboard.
 
 ## What Pasty does not try to do
 
@@ -140,12 +149,11 @@ Pasty intentionally does not try to be a full ImagePaste clone.
 
 It does not currently support:
 
-- copying Blender images back to the system clipboard
 - multiple pasted images at once
 - custom file naming preferences
 - moving pasted images after save
 - packing pasted images into the `.blend`
-- replacing existing node image data
+- OS-specific file-drop clipboard formats beyond text paths and file URLs
 - SVG or text clipboard handling
 
 Those features can be added later, but they should be added only when they fit the small native design.
@@ -176,6 +184,7 @@ Headless tests can check:
 - operators are registered
 - operators are unregistered
 - generated images can be saved to disk
+- image file paths and file URLs can be loaded
 
 Real clipboard behavior needs a local GUI smoke test, because headless Blender cannot fully prove system clipboard behavior. Hosted CI runners do not give us a stable system clipboard.
 

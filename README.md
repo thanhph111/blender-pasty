@@ -2,12 +2,16 @@
 
 Pasty is a Blender add-on for pasting images from the system clipboard.
 
+It first uses Blender's native image clipboard support. If the clipboard contains image file paths or `file://` URLs instead, Pasty can load those files too.
+
 It adds paste actions for:
 
 - 3D View: paste as a reference image
 - 3D View: paste as a mesh plane
 - Sequencer: paste as an image strip
 - Shader Editor: paste as an image texture node
+
+It also adds copy actions for image objects, material image textures, and Shader Editor image texture nodes.
 
 ## Development
 
@@ -17,7 +21,7 @@ Technical design notes live in [docs/technical-design.md](docs/technical-design.
 
 ## Saved images
 
-Blender stores clipboard images as generated image data. Sequencer strips need a real image file, so Pasty saves those pasted images to `//pasty` next to the `.blend` file. If the file has not been saved yet, Pasty uses the system temp folder.
+Blender stores raw clipboard images as generated image data. Sequencer strips need a real image file, so Pasty saves generated images to `//pasty` next to the `.blend` file. If the file has not been saved yet, Pasty uses the system temp folder.
 
 ## Blender and Python
 
