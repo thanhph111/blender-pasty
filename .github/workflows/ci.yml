@@ -65,8 +65,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.local/share/mise
-          key: mise-${{ runner.os }}-${{ hashFiles('.mise/mise.lock') }}
-          restore-keys: mise-${{ runner.os }}-
+          key: mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.mise/mise.lock') }}
+          restore-keys: mise-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Restore prek cache
         uses: actions/cache@v5
@@ -121,8 +121,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.local/share/mise
-          key: mise-${{ runner.os }}-${{ hashFiles('.mise/mise.lock') }}
-          restore-keys: mise-${{ runner.os }}-
+          key: mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.mise/mise.lock') }}
+          restore-keys: mise-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Restore uv cache
         uses: actions/cache@v5
@@ -190,8 +190,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.local/share/mise
-          key: mise-${{ runner.os }}-${{ hashFiles('.mise/mise.lock') }}
-          restore-keys: mise-${{ runner.os }}-
+          key: mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.mise/mise.lock') }}
+          restore-keys: mise-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Set up mise
         uses: jdx/mise-action@v4
@@ -247,8 +247,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.local/share/mise
-          key: mise-${{ runner.os }}-${{ hashFiles('.mise/mise.lock') }}
-          restore-keys: mise-${{ runner.os }}-
+          key: mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.mise/mise.lock') }}
+          restore-keys: mise-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Restore uv cache
         uses: actions/cache@v5
