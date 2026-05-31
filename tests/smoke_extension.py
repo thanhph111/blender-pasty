@@ -8,9 +8,11 @@ import bpy
 def main() -> None:
     module = load_addon()
     expected_operator_ids = {
+        "pasty.view3d_copy_image",
         "pasty.view3d_paste_reference",
         "pasty.view3d_paste_plane",
         "pasty.sequence_editor_paste",
+        "pasty.shader_editor_copy",
         "pasty.shader_editor_paste",
     }
     actual_operator_ids = {operator.bl_idname for operator in module.classes}
@@ -20,6 +22,7 @@ def main() -> None:
 
     assert_sequence_collection_is_available(module)
     assert_first_free_sequence_channel(module)
+    assert_object_images_can_be_found(module)
     assert_generated_image_can_be_saved(module)
 
     module.register()
@@ -79,6 +82,38 @@ def assert_first_free_sequence_channel(module: ModuleType) -> None:
     if channel != expected_channel:
         msg = f"expected channel {expected_channel}, got {channel}"
         raise RuntimeError(msg)
+
+
+def assert_object_images_can_be_found(module: ModuleType) -> None:
+    image = bpy.data.images.new("pasty-object-test", 2, 2)
+    material = bpy.data.materials.new("pasty-object-test")
+    material.use_nodes = True
+    obj = None
+    mesh = None
+    try:
+        obj = bpy.data.objects.new("pasty-object-test", None)
+        obj.empty_display_type = "IMAGE"
+        obj.data = image
+        if module.image_from_object(obj) != image:
+            msg = "could not find image from empty image object"
+            raise RuntimeError(msg)
+        bpy.data.objects.remove(obj)
+
+        mesh = bpy.data.meshes.new("pasty-object-test")
+        obj = bpy.data.objects.new("pasty-object-test", mesh)
+        node = material.node_tree.nodes.new("ShaderNodeTexImage")
+        node.image = image
+        obj.active_material = material
+        if module.image_from_object(obj) != image:
+            msg = "could not find image from object material"
+            raise RuntimeError(msg)
+    finally:
+        if obj is not None:
+            bpy.data.objects.remove(obj)
+        if mesh is not None:
+            bpy.data.meshes.remove(mesh)
+        bpy.data.materials.remove(material)
+        bpy.data.images.remove(image)
 
 
 if __name__ == "__main__":

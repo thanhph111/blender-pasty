@@ -60,6 +60,80 @@ def paste_failed(operator: bpy.types.Operator) -> OperatorReturn:
     return {"CANCELLED"}
 
 
+def copy_failed(operator: bpy.types.Operator) -> OperatorReturn:
+    operator.report({"WARNING"}, "No image available to copy")
+    return {"CANCELLED"}
+
+
+def copy_image_to_clipboard(context: bpy.types.Context, image: bpy.types.Image) -> bool:
+    if context.area is None:
+        return False
+
+    with temporary_image_editor(context.area):
+        space = context.area.spaces.active
+        previous_image = getattr(space, "image", None)
+        space.image = image
+        try:
+            return bpy.ops.image.clipboard_copy() == {"FINISHED"}
+        finally:
+            space.image = previous_image
+
+
+def image_from_node(node) -> bpy.types.Image | None:
+    if node is not None and node.bl_idname == "ShaderNodeTexImage":
+        return node.image
+    return None
+
+
+def image_from_material(material: bpy.types.Material | None) -> bpy.types.Image | None:
+    if material is None or not material.use_nodes or material.node_tree is None:
+        return None
+
+    nodes = material.node_tree.nodes
+    active_image = image_from_node(nodes.active)
+    if active_image is not None:
+        return active_image
+
+    for node in nodes:
+        image = image_from_node(node)
+        if image is not None:
+            return image
+
+    return None
+
+
+def image_from_object(obj: bpy.types.Object | None) -> bpy.types.Image | None:
+    if obj is None:
+        return None
+
+    if obj.type == "EMPTY" and obj.empty_display_type == "IMAGE":
+        if isinstance(obj.data, bpy.types.Image):
+            return obj.data
+        return None
+
+    return image_from_material(obj.active_material)
+
+
+def active_shader_image(context: bpy.types.Context) -> bpy.types.Image | None:
+    if context.space_data is None or not isinstance(context.space_data, bpy.types.SpaceNodeEditor):
+        return None
+    if context.space_data.edit_tree is None:
+        return None
+
+    nodes = context.space_data.edit_tree.nodes
+    active_image = image_from_node(nodes.active)
+    if active_image is not None:
+        return active_image
+
+    for node in nodes:
+        if node.select:
+            image = image_from_node(node)
+            if image is not None:
+                return image
+
+    return None
+
+
 def insert_image_as_reference(context: bpy.types.Context, image: bpy.types.Image) -> bool:
     """Insert a pasted image as a reference object in the 3D View."""
     bpy.ops.object.empty_add(type="IMAGE", radius=5.0, align="VIEW")
@@ -115,6 +189,44 @@ def first_free_sequence_channel(strips, frame_start: int, frame_end: int) -> int
 
     msg = "No free Sequencer channel available"
     raise RuntimeError(msg)
+
+
+# endregion
+
+
+# region View3D Copy Image Operator
+
+
+class PASTY_OT_view3d_copy_image(bpy.types.Operator):
+    """Copy image from the active object to the clipboard"""
+
+    bl_idname = "pasty.view3d_copy_image"
+    bl_label = "Copy Image"
+    bl_options: ClassVar[set[str]] = {"UNDO_GROUPED"}  # ty: ignore[invalid-attribute-override]
+
+    def execute(self, context: bpy.types.Context) -> OperatorReturn:
+        image = image_from_object(context.active_object)
+        if image is None:
+            return copy_failed(self)
+        if not copy_image_to_clipboard(context, image):
+            self.report({"ERROR"}, "Could not copy image to the clipboard")
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context) -> bool:
+        return (
+            context.area is not None
+            and context.area.type == "VIEW_3D"
+            and context.mode == "OBJECT"
+            and image_from_object(context.active_object) is not None
+        )
+
+
+def view3d_copy_image_context_menu_draw(self, _context: bpy.types.Context) -> None:
+    """Draw the Copy Image operator in the 3D View object context menu."""
+    self.layout.separator()
+    self.layout.operator(PASTY_OT_view3d_copy_image.bl_idname, icon="COPYDOWN")
 
 
 # endregion
@@ -292,6 +404,43 @@ def sequence_editor_paste_context_menu_km(
 # endregion
 
 
+# region Shader Editor Copy Operator
+
+
+class PASTY_OT_shader_editor_copy(bpy.types.Operator):
+    """Copy selected image texture to the clipboard"""
+
+    bl_idname = "pasty.shader_editor_copy"
+    bl_label = "Copy Image"
+    bl_options: ClassVar[set[str]] = {"UNDO_GROUPED"}  # ty: ignore[invalid-attribute-override]
+
+    def execute(self, context: bpy.types.Context) -> OperatorReturn:
+        image = active_shader_image(context)
+        if image is None:
+            return copy_failed(self)
+        if not copy_image_to_clipboard(context, image):
+            self.report({"ERROR"}, "Could not copy image to the clipboard")
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context) -> bool:
+        return (
+            context.area is not None
+            and context.area.type == "NODE_EDITOR"
+            and context.area.ui_type == "ShaderNodeTree"
+            and active_shader_image(context) is not None
+        )
+
+
+def shader_editor_copy_context_menu_draw(self, _context: bpy.types.Context) -> None:
+    """Draw the Copy Image operator in the Shader Editor context menu."""
+    self.layout.operator(PASTY_OT_shader_editor_copy.bl_idname, icon="COPYDOWN")
+
+
+# endregion
+
+
 # region Shader Editor Paste Operator
 
 
@@ -358,9 +507,11 @@ def shader_editor_paste_context_menu_km(
 # region Register Classes and Keymaps
 
 classes = (
+    PASTY_OT_view3d_copy_image,
     PASTY_OT_view3d_paste_reference,
     PASTY_OT_view3d_paste_plane,
     PASTY_OT_sequence_editor_paste,
+    PASTY_OT_shader_editor_copy,
     PASTY_OT_shader_editor_paste,
 )
 
@@ -368,9 +519,11 @@ classes = (
 def register() -> None:
     for cls in classes:
         bpy.utils.register_class(cls)
+    bpy.types.VIEW3D_MT_object_context_menu.append(view3d_copy_image_context_menu_draw)
     bpy.types.VIEW3D_MT_image_add.append(view3d_paste_reference_image_add_menu_draw)
     bpy.types.VIEW3D_MT_image_add.append(view3d_paste_plane_image_add_menu_draw)
     bpy.types.SEQUENCER_MT_context_menu.append(sequence_editor_paste_context_menu_draw)
+    bpy.types.NODE_MT_context_menu.append(shader_editor_copy_context_menu_draw)
     bpy.types.NODE_MT_context_menu.append(shader_editor_paste_context_menu_draw)
     register_keymaps()
 
@@ -378,9 +531,11 @@ def register() -> None:
 def unregister() -> None:
     unregister_keymaps()
     bpy.types.NODE_MT_context_menu.remove(shader_editor_paste_context_menu_draw)
+    bpy.types.NODE_MT_context_menu.remove(shader_editor_copy_context_menu_draw)
     bpy.types.SEQUENCER_MT_context_menu.remove(sequence_editor_paste_context_menu_draw)
     bpy.types.VIEW3D_MT_image_add.remove(view3d_paste_plane_image_add_menu_draw)
     bpy.types.VIEW3D_MT_image_add.remove(view3d_paste_reference_image_add_menu_draw)
+    bpy.types.VIEW3D_MT_object_context_menu.remove(view3d_copy_image_context_menu_draw)
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 
