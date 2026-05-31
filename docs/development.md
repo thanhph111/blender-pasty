@@ -4,6 +4,8 @@ This repo uses `mise` as the command runner. `mise` pins the tools used by the r
 
 For the add-on design and ImagePaste comparison, see [technical-design.md](technical-design.md).
 
+For real clipboard checks across macOS, Windows, and Linux, see [manual-testing.md](manual-testing.md).
+
 ## Setup
 
 Run this once:
