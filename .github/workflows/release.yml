@@ -66,6 +66,7 @@ jobs:
           else
             build_run_id="$(
               gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release-candidate.yml/runs" \
+                --method GET \
                 -f head_sha="$commit" \
                 -f status=success \
                 -f per_page=20 \
