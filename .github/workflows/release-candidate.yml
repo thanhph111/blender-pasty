@@ -1,4 +1,4 @@
-name: Release Build
+name: Release Candidate
 
 on:
   push:
@@ -13,8 +13,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build release package
+  candidate:
+    name: Verify and package
     uses: ./.github/workflows/_verify.yml
     permissions:
       actions: write

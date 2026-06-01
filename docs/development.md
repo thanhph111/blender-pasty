@@ -148,4 +148,4 @@ mise run dev debug        launch Blender with debugpy listening
 
 `.github/workflows/ci.yml` runs the PR commit-message check, then calls `.github/workflows/_verify.yml`.
 
-The shared verify workflow runs lint, test, the Blender matrix, then package testing. The Blender matrix downloads official Blender builds and runs the headless smoke test across Linux, Windows, macOS arm64, and macOS Intel.
+The shared verify workflow runs lint, tests, Blender smoke targets, then package testing. The full release-candidate run checks Linux, Windows, and Apple Silicon macOS on Blender 4.2, 4.5, and current stable.

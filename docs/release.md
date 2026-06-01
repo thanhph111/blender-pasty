@@ -4,7 +4,7 @@ This is the release path for GitHub and extensions.blender.org.
 
 The release uses two GitHub Actions workflows:
 
-- `.github/workflows/release-build.yml` (`Release Build`) runs the full checks on a `release/**` branch and uploads one package artifact.
+- `.github/workflows/release-candidate.yml` (`Release Candidate`) runs the full checks on a `release/**` branch and uploads one package artifact.
 - `.github/workflows/release.yml` (`Release`) promotes that same package from a tag into a draft GitHub release.
 
 Keep this rule simple: build once, then promote the same zip. A tag must not rebuild or retest.
@@ -41,7 +41,7 @@ Use these version bumps:
 
 5. Check the built package in `dist/`.
 
-## Release build
+## Release candidate
 
 Create a release branch from the commit you want to ship:
 
@@ -50,7 +50,7 @@ git switch -c release/v0.1.0
 git push origin release/v0.1.0
 ```
 
-This starts `Release Build`. It runs the full matrix:
+This starts `Release Candidate`. It runs the full matrix:
 
 - Linux on Blender 4.2, 4.5, and current stable
 - Windows on Blender 4.2, 4.5, and current stable
@@ -61,7 +61,7 @@ The workflow uploads one artifact named `pasty-release-package`. It contains:
 - `dist/pasty-*.zip`
 - `dist/SHA256SUMS`
 
-Use the workflow run ID from this build when promoting manually. You can find it in the workflow URL:
+Use the workflow run ID from this candidate when promoting manually. You can find it in the workflow URL:
 
 ```text
 https://github.com/<owner>/<repo>/actions/runs/<run_id>
@@ -70,12 +70,12 @@ https://github.com/<owner>/<repo>/actions/runs/<run_id>
 You can also list recent builds:
 
 ```bash
-gh run list --workflow release-build.yml
+gh run list --workflow release-candidate.yml
 ```
 
 ## GitHub release
 
-The GitHub release workflow reads the matching section from `CHANGELOG.md`. It does not build the zip. It finds a successful `Release Build` run for the same commit and downloads `pasty-release-package`.
+The GitHub release workflow reads the matching section from `CHANGELOG.md`. It does not build the zip. It finds a successful `Release Candidate` run for the same commit and downloads `pasty-release-package`.
 
 To preview the notes locally:
 
@@ -83,7 +83,7 @@ To preview the notes locally:
 mise run --quiet release-notes -- 0.1.0
 ```
 
-After the release build passes, create and push a signed annotated tag:
+After the release candidate passes, create and push a signed annotated tag:
 
 ```bash
 git tag -s v0.1.0 -m "Pasty 0.1.0"
@@ -98,7 +98,7 @@ The workflow creates or updates a draft GitHub release with:
 
 Review the draft release in GitHub, then publish it.
 
-If the automatic build lookup ever cannot find the right run, start the release workflow manually and pass the `Release Build` run ID.
+If the automatic build lookup ever cannot find the right run, start the release workflow manually and pass the `Release Candidate` run ID.
 
 ## Failed tag recovery
 

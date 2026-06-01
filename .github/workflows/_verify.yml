@@ -19,7 +19,7 @@ on:
         type: boolean
         default: false
       profile:
-        description: Verification depth. Use fast for PRs and full for scheduled/release runs.
+        description: Verification depth. Use fast for PRs and full for scheduled/release-candidate runs.
         required: false
         type: string
         default: fast
@@ -132,13 +132,13 @@ jobs:
         run: mise exec -- uv cache prune --ci
 
   blender-matrix:
-    name: Plan Blender matrix
+    name: Plan Blender smoke targets
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - name: Choose Blender matrix
+      - name: Choose Blender smoke targets
         id: matrix
         shell: python
         run: |
@@ -148,38 +148,28 @@ jobs:
 
           profile = "${{ inputs.profile }}"
           if profile == "fast":
-              platforms = [
-                  ("Linux", "ubuntu-24.04", ["4.2", "5.1"]),
-              ]
+              targets = ["linux-blender-4.2", "linux-blender-5.1"]
           elif profile == "full":
-              platforms = [
-                  ("Linux", "ubuntu-24.04", ["4.2", "4.5", "5.1"]),
-                  ("Windows", "windows-2025", ["4.2", "4.5", "5.1"]),
-                  ("macOS", "macos-15", ["4.2", "4.5", "5.1"]),
+              targets = [
+                  f"{platform}-blender-{blender}"
+                  for platform in ("linux", "windows", "macos")
+                  for blender in ("4.2", "4.5", "5.1")
               ]
           else:
               print(f"Unknown profile: {profile}", file=sys.stderr)
               raise SystemExit(1)
 
-          matrix = {
-              "include": [
-                  {
-                      "label": f"{platform_label} / Blender {blender}",
-                      "os": os_name,
-                      "blender": blender,
-                  }
-                  for platform_label, os_name, blenders in platforms
-                  for blender in blenders
-              ]
-          }
+          # GitHub's sidebar can collapse matrix rows down to one matrix value.
+          # Keep that value fully descriptive so repeated 4.2/4.5/5.1 rows stay readable.
+          matrix = {"include": [{"target": target} for target in targets]}
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
 
   blender:
-    name: ${{ matrix.label }}
+    name: ${{ matrix.target }}
     needs: [test, blender-matrix]
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ startsWith(matrix.target, 'linux-') && 'ubuntu-24.04' || startsWith(matrix.target, 'windows-') && 'windows-2025' || 'macos-15' }}
     timeout-minutes: 30
     permissions:
       actions: write
@@ -206,16 +196,31 @@ jobs:
         with:
           cache: false
 
+      - name: Resolve Blender target
+        id: target
+        shell: bash
+        run: |
+          case "${{ matrix.target }}" in
+            linux-blender-* | windows-blender-* | macos-blender-*)
+              target="${{ matrix.target }}"
+              echo "blender=${target##*-blender-}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unknown Blender target: ${{ matrix.target }}" >&2
+              exit 1
+              ;;
+          esac
+
       - name: Restore Blender cache
         id: blender_cache
         uses: actions/cache/restore@v5
         with:
           path: .cache/blender
-          key: blender-${{ runner.os }}-${{ runner.arch }}-${{ matrix.blender }}
+          key: blender-${{ matrix.target }}-${{ runner.arch }}
 
       - name: Install Blender
         id: install_blender
-        run: mise run blender install ${{ matrix.blender }}
+        run: mise run blender install ${{ steps.target.outputs.blender }}
 
       - name: Delete stale Blender cache
         # GitHub cache entries are immutable. Delete the old key when the installer
@@ -225,7 +230,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          BLENDER_CACHE_KEY: blender-${{ runner.os }}-${{ runner.arch }}-${{ matrix.blender }}
+          BLENDER_CACHE_KEY: blender-${{ matrix.target }}-${{ runner.arch }}
         run: gh cache delete "$BLENDER_CACHE_KEY" || true
 
       - name: Save Blender cache
@@ -235,7 +240,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: .cache/blender
-          key: blender-${{ runner.os }}-${{ runner.arch }}-${{ matrix.blender }}
+          key: blender-${{ matrix.target }}-${{ runner.arch }}
 
       - name: Print Blender version
         run: mise run blender run -- --version
@@ -244,7 +249,7 @@ jobs:
         run: mise run blender run -- --background --factory-startup --python-exit-code 1 --python checks/smoke_repo.py
 
   package:
-    name: Package
+    name: Package artifact
     needs: [test, blender]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -287,15 +292,15 @@ jobs:
       - name: Install Blender
         run: mise run blender install 5.1
 
-      - name: Build and smoke-test packaged add-on
+      - name: Build and smoke test package
         run: mise run test package
 
-      - name: Create checksum
+      - name: Create SHA256 checksum
         if: inputs.create_checksum
         shell: bash
         run: shasum -a 256 dist/pasty-*.zip > dist/SHA256SUMS
 
-      - name: Upload add-on
+      - name: Upload package artifact
         if: ${{ !inputs.create_checksum }}
         uses: actions/upload-artifact@v7
         with:
@@ -303,7 +308,7 @@ jobs:
           path: dist/pasty-*.zip
           if-no-files-found: error
 
-      - name: Upload add-on and checksum
+      - name: Upload package artifact
         if: inputs.create_checksum
         uses: actions/upload-artifact@v7
         with:

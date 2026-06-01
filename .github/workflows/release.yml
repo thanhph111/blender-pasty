@@ -10,7 +10,7 @@ on:
         required: true
         type: string
       build_run_id:
-        description: Successful Release Build run ID to promote. Leave empty to find it by tag commit.
+        description: Successful Release Candidate run ID to promote. Leave empty to find it by tag commit.
         required: false
         type: string
       upload_blender_extensions:
@@ -32,7 +32,7 @@ env:
 
 jobs:
   resolve-build:
-    name: Resolve release build
+    name: Find release package
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -44,14 +44,14 @@ jobs:
       commit: ${{ steps.resolve.outputs.commit }}
       tag: ${{ steps.resolve.outputs.tag }}
     steps:
-      - name: Check out tag
+      - name: Check out release tag
         uses: actions/checkout@v6
         with:
           ref: refs/tags/${{ env.RELEASE_TAG }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Find successful build for this commit
+      - name: Find built package for this commit
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
@@ -65,7 +65,7 @@ jobs:
             build_run_id="$INPUT_BUILD_RUN_ID"
           else
             build_run_id="$(
-              gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release-build.yml/runs" \
+              gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release-candidate.yml/runs" \
                 -f head_sha="$commit" \
                 -f status=success \
                 -f per_page=20 \
@@ -75,7 +75,7 @@ jobs:
           fi
 
           if [ -z "$build_run_id" ]; then
-            echo "No successful Release Build run found for ${tag} (${commit})." >&2
+            echo "No successful Release Candidate run found for ${tag} (${commit})." >&2
             echo "Push a release branch for this commit first, then push the tag." >&2
             exit 1
           fi
@@ -86,11 +86,11 @@ jobs:
           build_url="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${build_run_id}" --jq '.html_url')"
 
           if [ "$build_head_sha" != "$commit" ]; then
-            echo "Release Build ${build_run_id} belongs to ${build_head_sha}, not ${commit}." >&2
+            echo "Release Candidate ${build_run_id} belongs to ${build_head_sha}, not ${commit}." >&2
             exit 1
           fi
           if [ "$build_status" != "completed" ] || [ "$build_conclusion" != "success" ]; then
-            echo "Release Build ${build_run_id} is ${build_status}/${build_conclusion}, not completed/success." >&2
+            echo "Release Candidate ${build_run_id} is ${build_status}/${build_conclusion}, not completed/success." >&2
             exit 1
           fi
 
@@ -102,7 +102,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   github-release:
-    name: GitHub release
+    name: Draft GitHub release
     needs: [resolve-build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -121,7 +121,7 @@ jobs:
         with:
           cache: false
 
-      - name: Download package from release build
+      - name: Download built package
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_RUN_ID: ${{ needs.resolve-build.outputs.build_run_id }}
@@ -137,7 +137,7 @@ jobs:
           version="${RELEASE_TAG#v}"
           mise run --quiet release-notes -- "$version" > dist/RELEASE_NOTES.md
 
-      - name: Create or update draft GitHub release
+      - name: Draft GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -158,7 +158,7 @@ jobs:
           fi
 
   blender-extensions-upload:
-    name: Blender Extensions upload
+    name: Upload to Blender Extensions
     needs: [resolve-build]
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_blender_extensions }}
     runs-on: ubuntu-latest
@@ -178,7 +178,7 @@ jobs:
         with:
           cache: false
 
-      - name: Download package from release build
+      - name: Download built package
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_RUN_ID: ${{ needs.resolve-build.outputs.build_run_id }}
