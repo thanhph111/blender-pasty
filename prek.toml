@@ -28,6 +28,14 @@ language = "system"
 types = ["markdown"]
 
 [[repos.hooks]]
+id = "actionlint"
+name = "actionlint"
+entry = "mise x -- actionlint"
+language = "system"
+files = "^\\.github/workflows/.*\\.ya?ml$"
+pass_filenames = false
+
+[[repos.hooks]]
 id = "ruff-format"
 name = "ruff format"
 entry = "uv run --no-sync ruff format --no-cache"
@@ -51,7 +59,7 @@ types = ["text"]
 [[repos.hooks]]
 id = "python-compile"
 name = "python compile"
-entry = "uv run --no-sync python -m compileall -q __init__.py .mise/tasks tests"
+entry = "uv run --no-sync python -m compileall -q __init__.py .mise/tasks checks"
 language = "system"
 pass_filenames = false
 always_run = true

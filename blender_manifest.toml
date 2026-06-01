@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "pasty"
-version = "0.0.1"
+version = "0.1.0"
 name = "Pasty"
 tagline = "Paste images from clipboard into Blender"
 maintainer = "thanhph111"
@@ -11,7 +11,7 @@ type = "add-on"
 website = "https://github.com/thanhph111/blender-pasty"
 
 # See: https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
-tags = ["Animation", "Sequencer"]
+tags = ["3D View", "Material", "Node", "Sequencer"]
 
 blender_version_min = "4.2.0"
 
@@ -50,6 +50,7 @@ files = "Load image files and save generated clipboard images"
 # https://docs.blender.org/manual/en/dev/advanced/extensions/command_line_arguments.html#command-line-args-extension-build
 [build]
 paths = [
+    "LICENSE",
     "README.md",
     "__init__.py",
 ]

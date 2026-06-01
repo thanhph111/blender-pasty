@@ -4,7 +4,9 @@ This repo uses `mise` as the command runner. `mise` pins the tools used by the r
 
 For the add-on design and ImagePaste comparison, see [technical-design.md](technical-design.md).
 
-For real clipboard checks across macOS, Windows, and Linux, see [manual-testing.md](manual-testing.md).
+For real clipboard checks, release checks, and packaged install testing, see [testing.md](testing.md).
+
+For release publishing, see [release.md](release.md).
 
 ## Setup
 
@@ -20,10 +22,13 @@ Common checks:
 ```bash
 mise run lint
 mise run test
+mise run test package
 mise run build
 ```
 
-`mise run test` runs the repo-side pytest tests, validates the extension manifest, and runs a headless Blender API smoke test.
+`mise run test` validates the extension manifest and runs a headless Blender API smoke test.
+
+`mise run test package` builds the extension zip, installs that zip into a clean temporary Blender extension repository, enables it, and runs the smoke test against the installed extension.
 
 `mise run build` writes the extension zip to `dist/`.
 
@@ -123,20 +128,24 @@ BLENDER_BIN=/path/to/blender mise run dev debug --wait
 ## Task map
 
 ```text
-mise run deps          install project dependencies
-mise run setup         install dependencies and Git hooks
-mise run lint          run formatters and linters
-mise run test          run pytest, validate the manifest, and smoke-test the add-on
-mise run build         build dist/pasty-*.zip
-mise run dev paths     print dev paths
-mise run dev link      symlink the repo into the dev extension folder
-mise run dev repo-add  add the dev extension folder to Blender
-mise run dev install   build and install the packaged extension
-mise run dev debug     launch Blender with debugpy listening
+mise run deps             install project dependencies
+mise run setup            install dependencies and Git hooks
+mise run lint             run formatters and linters
+mise run test             validate the manifest and smoke-test the add-on
+mise run test package     build, install, and smoke-test the packaged zip
+mise run build            build dist/pasty-*.zip
+mise run release-notes    print release notes from CHANGELOG.md
+mise run blender install  install a Blender build for CI
+mise run blender run      run the CI Blender binary
+mise run dev paths        print dev paths
+mise run dev link         symlink the repo into the dev extension folder
+mise run dev repo-add     add the dev extension folder to Blender
+mise run dev install      build and install the packaged extension
+mise run dev debug        launch Blender with debugpy listening
 ```
 
 ## CI
 
-`.github/workflows/ci.yml` runs lint, test, the Blender matrix, then build.
+`.github/workflows/ci.yml` runs the PR commit-message check, then calls `.github/workflows/_verify.yml`.
 
-The Blender matrix downloads official Blender builds and runs the headless smoke test across Linux, Windows, macOS arm64, and macOS Intel. Build waits for those checks before uploading the zip.
+The shared verify workflow runs lint, test, the Blender matrix, then package testing. The Blender matrix downloads official Blender builds and runs the headless smoke test across Linux, Windows, macOS arm64, and macOS Intel.

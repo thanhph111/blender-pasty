@@ -1,3 +1,13 @@
+#!/usr/bin/env -S uv run -s --no-sync
+
+# [MISE] description="Blender CI helpers"
+# [USAGE] cmd install help="Install a Blender build for CI" {
+# [USAGE]   arg "<version>" help="Blender version or series, such as 4.2 or 4.2.21"
+# [USAGE] }
+# [USAGE] cmd run help="Run the CI Blender binary" {
+# [USAGE]   arg "[args]..." help="Arguments passed to Blender"
+# [USAGE] }
+
 import argparse
 import os
 import platform
@@ -10,11 +20,24 @@ from pathlib import Path
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("version")
+    parser = argparse.ArgumentParser(prog="blender")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    install = subparsers.add_parser("install", help="Install a Blender build for CI")
+    install.add_argument("version")
+
+    run = subparsers.add_parser("run", help="Run the CI Blender binary")
+    run.add_argument("args", nargs=argparse.REMAINDER)
+
     args = parser.parse_args()
 
-    version_spec = args.version
+    if args.command == "install":
+        install_blender(args.version)
+    elif args.command == "run":
+        run_blender(args.args)
+
+
+def install_blender(version_spec: str) -> None:
     system = runner_os()
     arch = runner_arch()
     version = resolve_version(version_spec, system, arch)
@@ -54,6 +77,18 @@ def main() -> None:
     write_github_value("GITHUB_ENV", "BLENDER_BIN", str(blender_bin))
     print(f"Blender {version}")
     print(blender_bin)
+
+
+def run_blender(args: list[str]) -> None:
+    blender_bin = os.environ.get("BLENDER_BIN")
+    if not blender_bin:
+        msg = "BLENDER_BIN is not set"
+        raise RuntimeError(msg)
+
+    if args[:1] == ["--"]:
+        args = args[1:]
+
+    subprocess.run([blender_bin, *args], check=True)
 
 
 def runner_os() -> str:

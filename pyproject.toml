@@ -1,6 +1,6 @@
 [project]
 name = "blender-pasty"
-version = "0.0.1"
+version = "0.1.0"
 description = "Paste clipboard images into Blender"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -13,7 +13,6 @@ build = [
 dev = [
     "debugpy",
     "fake-bpy-module",
-    "pytest",
     "ruff",
     "ty",
 ]
@@ -52,17 +51,23 @@ split-on-trailing-comma = false
     "S603", # This task intentionally runs the local Blender binary.
     "T201", # This task prints user-facing command errors.
 ]
+".mise/tasks/blender.py" = [
+    "PLR0912", # The command dispatcher and platform branches are clearer in one task.
+    "S202", # CI extracts official Blender archives downloaded from blender.org.
+    "S603", # CI intentionally launches local tools and Blender.
+    "S607", # CI runner tools are expected to be on PATH.
+    "T201", # CI helpers print useful paths in workflow logs.
+]
+".mise/tasks/release-notes.py" = [
+    "T201", # This task prints release notes for humans and CI.
+]
+".mise/tasks/test.py" = [
+    "S603", # This task intentionally launches local tools and Blender.
+    "S607", # Repo commands are expected to be on PATH.
+    "T201", # This task prints Blender commands for release logs.
+]
 ".mise/tasks/dev.py" = [
     "PLR0912", # The command dispatcher is clearer as one small match table.
     "S603", # This task intentionally runs local Blender and mise commands.
     "T201", # This task prints user-facing setup instructions.
-]
-"tests/ci/*.py" = [
-    "S202", # CI extracts official Blender archives downloaded from blender.org.
-    "S603", # CI helpers intentionally launch local tools and Blender.
-    "S607", # CI runner tools are expected to be on PATH.
-    "T201", # CI helpers print useful paths in workflow logs.
-]
-"tests/test_*.py" = [
-    "S101", # Pytest uses assert rewriting for clear failures.
 ]

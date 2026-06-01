@@ -1,0 +1,149 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to release, such as v0.1.0
+        required: true
+        type: string
+      upload_blender_extensions:
+        description: Upload this version to Blender Extensions using the API
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+  RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  verify:
+    name: Verify release package
+    uses: ./.github/workflows/_verify.yml
+    permissions:
+      actions: write
+      contents: read
+    with:
+      artifact_name: pasty-release-package
+      checkout_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+      create_checksum: true
+      profile: full
+
+  github-release:
+    name: GitHub release
+    needs: [verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          persist-credentials: false
+
+      - name: Download package artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: pasty-release-package
+          path: dist
+
+      - name: Set up mise
+        uses: jdx/mise-action@v4
+        with:
+          cache: false
+
+      - name: Write release notes from changelog
+        shell: bash
+        run: |
+          version="${RELEASE_TAG#v}"
+          mise run --quiet release-notes -- "$version" > dist/RELEASE_NOTES.md
+
+      - name: Create or update draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
+              --notes-file dist/RELEASE_NOTES.md
+            gh release upload "$RELEASE_TAG" dist/pasty-*.zip dist/SHA256SUMS --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              dist/pasty-*.zip \
+              dist/SHA256SUMS \
+              --draft \
+              --verify-tag \
+              --title "$RELEASE_TAG" \
+              --notes-file dist/RELEASE_NOTES.md
+          fi
+
+  blender-extensions-upload:
+    name: Blender Extensions upload
+    needs: [verify]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_blender_extensions }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          persist-credentials: false
+
+      - name: Download package artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: pasty-release-package
+          path: dist
+
+      - name: Set up mise
+        uses: jdx/mise-action@v4
+        with:
+          cache: false
+
+      - name: Write release notes from changelog
+        shell: bash
+        run: |
+          version="${RELEASE_TAG#v}"
+          mise run --quiet release-notes -- "$version" > dist/RELEASE_NOTES.md
+
+      - name: Upload version to Blender Extensions
+        env:
+          BLENDER_EXTENSION_TOKEN: ${{ secrets.BLENDER_EXTENSION_TOKEN }}
+          BLENDER_EXTENSIONS_ID: ${{ vars.BLENDER_EXTENSIONS_ID }}
+        shell: bash
+        run: |
+          if [ -z "$BLENDER_EXTENSION_TOKEN" ]; then
+            echo "Missing BLENDER_EXTENSION_TOKEN secret" >&2
+            exit 1
+          fi
+          if [ -z "$BLENDER_EXTENSIONS_ID" ]; then
+            echo "Missing BLENDER_EXTENSIONS_ID repository variable" >&2
+            exit 1
+          fi
+
+          package="$(find dist -maxdepth 1 -type f -name 'pasty-*.zip' | sort | head -n 1)"
+          if [ -z "$package" ]; then
+            echo "Missing dist/pasty-*.zip" >&2
+            exit 1
+          fi
+
+          curl --fail --show-error --location \
+            -X POST "https://extensions.blender.org/api/v1/extensions/${BLENDER_EXTENSIONS_ID}/versions/upload/" \
+            -H "Authorization: Bearer ${BLENDER_EXTENSION_TOKEN}" \
+            -F "version_file=@${package}" \
+            -F "release_notes=<dist/RELEASE_NOTES.md"
