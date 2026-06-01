@@ -156,7 +156,6 @@ jobs:
                   "ubuntu-24.04": ["4.2", "4.5", "5.1"],
                   "windows-2025": ["4.2", "4.5", "5.1"],
                   "macos-15": ["4.2", "4.5", "5.1"],
-                  "macos-15-intel": ["4.2", "4.5", "5.1"],
               }
           else:
               print(f"Unknown profile: {profile}", file=sys.stderr)

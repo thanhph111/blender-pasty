@@ -9,6 +9,10 @@ on:
         description: Existing tag to release, such as v0.1.0
         required: true
         type: string
+      build_run_id:
+        description: Successful Release Build run ID to promote. Leave empty to find it by tag commit.
+        required: false
+        type: string
       upload_blender_extensions:
         description: Upload this version to Blender Extensions using the API
         required: false
@@ -24,46 +28,108 @@ permissions:
 
 env:
   MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
-  RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
-  verify:
-    name: Verify release package
-    uses: ./.github/workflows/_verify.yml
-    permissions:
-      actions: write
-      contents: read
-    with:
-      artifact_name: pasty-release-package
-      checkout_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-      create_checksum: true
-      profile: full
-
-  github-release:
-    name: GitHub release
-    needs: [verify]
+  resolve-build:
+    name: Resolve release build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      actions: read
+      contents: read
+    outputs:
+      build_run_id: ${{ steps.resolve.outputs.build_run_id }}
+      build_url: ${{ steps.resolve.outputs.build_url }}
+      commit: ${{ steps.resolve.outputs.commit }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Check out tag
+        uses: actions/checkout@v6
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Find successful build for this commit
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_BUILD_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.build_run_id || '' }}
+        shell: bash
+        run: |
+          tag="$RELEASE_TAG"
+          commit="$(git rev-list -n 1 "$tag")"
+
+          if [ -n "$INPUT_BUILD_RUN_ID" ]; then
+            build_run_id="$INPUT_BUILD_RUN_ID"
+          else
+            build_run_id="$(
+              gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release-build.yml/runs" \
+                -f head_sha="$commit" \
+                -f status=success \
+                -f per_page=20 \
+                --jq '.workflow_runs[] | select(.head_branch | startswith("release/")) | .id' \
+                | head -n 1
+            )"
+          fi
+
+          if [ -z "$build_run_id" ]; then
+            echo "No successful Release Build run found for ${tag} (${commit})." >&2
+            echo "Push a release branch for this commit first, then push the tag." >&2
+            exit 1
+          fi
+
+          build_head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${build_run_id}" --jq '.head_sha')"
+          build_status="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${build_run_id}" --jq '.status')"
+          build_conclusion="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${build_run_id}" --jq '.conclusion')"
+          build_url="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${build_run_id}" --jq '.html_url')"
+
+          if [ "$build_head_sha" != "$commit" ]; then
+            echo "Release Build ${build_run_id} belongs to ${build_head_sha}, not ${commit}." >&2
+            exit 1
+          fi
+          if [ "$build_status" != "completed" ] || [ "$build_conclusion" != "success" ]; then
+            echo "Release Build ${build_run_id} is ${build_status}/${build_conclusion}, not completed/success." >&2
+            exit 1
+          fi
+
+          {
+            echo "build_run_id=${build_run_id}"
+            echo "build_url=${build_url}"
+            echo "commit=${commit}"
+            echo "tag=${tag}"
+          } >> "$GITHUB_OUTPUT"
+
+  github-release:
+    name: GitHub release
+    needs: [resolve-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
       contents: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ env.RELEASE_REF }}
+          ref: refs/tags/${{ needs.resolve-build.outputs.tag }}
           persist-credentials: false
-
-      - name: Download package artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: pasty-release-package
-          path: dist
 
       - name: Set up mise
         uses: jdx/mise-action@v4
         with:
           cache: false
+
+      - name: Download package from release build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ needs.resolve-build.outputs.build_run_id }}
+        shell: bash
+        run: |
+          gh run download "$BUILD_RUN_ID" --name pasty-release-package --dir dist
+          test -n "$(find dist -maxdepth 1 -type f -name 'pasty-*.zip' | head -n 1)"
+          test -f dist/SHA256SUMS
 
       - name: Write release notes from changelog
         shell: bash
@@ -93,27 +159,33 @@ jobs:
 
   blender-extensions-upload:
     name: Blender Extensions upload
-    needs: [verify]
+    needs: [resolve-build]
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_blender_extensions }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ env.RELEASE_REF }}
+          ref: refs/tags/${{ needs.resolve-build.outputs.tag }}
           persist-credentials: false
-
-      - name: Download package artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: pasty-release-package
-          path: dist
 
       - name: Set up mise
         uses: jdx/mise-action@v4
         with:
           cache: false
+
+      - name: Download package from release build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ needs.resolve-build.outputs.build_run_id }}
+        shell: bash
+        run: |
+          gh run download "$BUILD_RUN_ID" --name pasty-release-package --dir dist
+          test -n "$(find dist -maxdepth 1 -type f -name 'pasty-*.zip' | head -n 1)"
 
       - name: Write release notes from changelog
         shell: bash

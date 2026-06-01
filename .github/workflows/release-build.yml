@@ -1,0 +1,26 @@
+name: Release Build
+
+on:
+  push:
+    branches: ['release/**']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build release package
+    uses: ./.github/workflows/_verify.yml
+    permissions:
+      actions: write
+      contents: read
+    with:
+      artifact_name: pasty-release-package
+      checkout_ref: ${{ github.sha }}
+      create_checksum: true
+      profile: full
