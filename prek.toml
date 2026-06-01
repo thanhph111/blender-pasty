@@ -59,7 +59,7 @@ types = ["text"]
 [[repos.hooks]]
 id = "python-compile"
 name = "python compile"
-entry = "uv run --no-sync python -m compileall -q __init__.py .mise/tasks checks"
+entry = "uv run --no-sync python -m compileall -q __init__.py addon .mise/tasks checks"
 language = "system"
 pass_filenames = false
 always_run = true

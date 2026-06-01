@@ -48,6 +48,24 @@ fix(addon): save pasted sequencer images
 ci(blender): test clipboard paste in official builds
 ```
 
+## Source layout
+
+The root `__init__.py` is Blender's entry point. The rest of the add-on code lives in `addon/`:
+
+```text
+__init__.py
+addon/
+  clipboard.py
+  image_lookup.py
+  registration.py
+  areas/
+    view_3d.py
+    shader_editor.py
+    sequencer.py
+```
+
+This keeps Blender's expected root package shape and avoids a build staging step.
+
 ## Live Blender testing
 
 For day-to-day development, use a symlinked local extension folder. A symlink is a folder shortcut, so Blender reads this repo directly instead of a copied file.
@@ -76,11 +94,13 @@ If `mise run dev repo-add` cannot find Blender, open Blender and add the dev fol
 Edit > Preferences > Get Extensions > Repositories
 ```
 
-In Blender, enable `Pasty` once. After editing `__init__.py`, use:
+In Blender, enable `Pasty` once. After editing source files, use:
 
 ```text
 Blender > System > Reload Scripts
 ```
+
+Most edits will be in `addon/areas/`, `addon/clipboard.py`, or `addon/image_lookup.py`.
 
 To test the packaged extension instead of the live symlink:
 
@@ -96,7 +116,7 @@ mise run dev install --repo user_default
 
 ### Cross-platform notes
 
-The live setup uses a symlink. A symlink is better than copying on save here because Blender reads this repo directly. Save the file, then reload scripts in Blender.
+The live setup uses symlinks. Symlinks are better than copying on save here because Blender sees the latest files after each save. Save the file, then reload scripts in Blender.
 
 Default dev folders:
 

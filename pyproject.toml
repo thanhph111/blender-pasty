@@ -41,10 +41,16 @@ split-on-trailing-comma = false
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = [
+    "N999", # Don't check package __init__.py files.
+]
+"addon/__init__.py" = [
+    "N999", # Don't check package __init__.py files.
+]
+"addon/areas/*.py" = [
     "ANN", # Blender callbacks keep the bpy-owned signature shape.
     "N801", # Blender operator class names use the add-on prefix.
-    "N999", # Don't check root __init__.py files
     "S101", # Blender operators use assertions for runtime context checks.
+    "TID252", # Blender loads extensions under bl_ext.*, so parent-relative imports are correct.
 ]
 ".mise/tasks/extension.py" = [
     "PLC0415", # The bpy fallback imports Blender-owned modules only when needed.

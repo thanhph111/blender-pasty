@@ -33,6 +33,8 @@ In Blender, enable `Pasty`. After code changes, use:
 Blender > System > Reload Scripts
 ```
 
+The root `__init__.py` is Blender's entry point. The real source files live in `addon/`, and the dev symlink points Blender at this repo.
+
 To test the packaged extension instead:
 
 ```bash

@@ -53,4 +53,13 @@ paths = [
     "LICENSE",
     "README.md",
     "__init__.py",
+    "addon/__init__.py",
+    "addon/blender_types.py",
+    "addon/clipboard.py",
+    "addon/image_lookup.py",
+    "addon/registration.py",
+    "addon/areas/__init__.py",
+    "addon/areas/sequencer.py",
+    "addon/areas/shader_editor.py",
+    "addon/areas/view_3d.py",
 ]

@@ -43,7 +43,15 @@ flowchart TD
     I -->|"No"| J["Pasty reports that no compatible image was found"]
 ```
 
-The shared paste path lives in `temporary_image_editor()`, `paste_images_from_clipboard()`, and the image file helpers in `__init__.py`.
+The shared paste path lives in `temporary_image_editor()`, `paste_images_from_clipboard()`, and the image file helpers in `addon/clipboard.py`.
+
+The editor-specific behavior lives with the editor it changes:
+
+- `addon/areas/view_3d.py`
+- `addon/areas/shader_editor.py`
+- `addon/areas/sequencer.py`
+
+`addon/registration.py` owns classes, menus, and shortcuts.
 
 ## Poll rules
 
