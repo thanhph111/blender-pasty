@@ -148,23 +148,27 @@ jobs:
 
           profile = "${{ inputs.profile }}"
           if profile == "fast":
-              runners = {
-                  "ubuntu-24.04": ["4.2", "5.1"],
-              }
+              platforms = [
+                  ("Linux", "ubuntu-24.04", ["4.2", "5.1"]),
+              ]
           elif profile == "full":
-              runners = {
-                  "ubuntu-24.04": ["4.2", "4.5", "5.1"],
-                  "windows-2025": ["4.2", "4.5", "5.1"],
-                  "macos-15": ["4.2", "4.5", "5.1"],
-              }
+              platforms = [
+                  ("Linux", "ubuntu-24.04", ["4.2", "4.5", "5.1"]),
+                  ("Windows", "windows-2025", ["4.2", "4.5", "5.1"]),
+                  ("macOS", "macos-15", ["4.2", "4.5", "5.1"]),
+              ]
           else:
               print(f"Unknown profile: {profile}", file=sys.stderr)
               raise SystemExit(1)
 
           matrix = {
               "include": [
-                  {"os": os_name, "blender": blender}
-                  for os_name, blenders in runners.items()
+                  {
+                      "label": f"{platform_label} / Blender {blender}",
+                      "os": os_name,
+                      "blender": blender,
+                  }
+                  for platform_label, os_name, blenders in platforms
                   for blender in blenders
               ]
           }
@@ -173,7 +177,7 @@ jobs:
               output.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
 
   blender:
-    name: Blender / ${{ matrix.os }} / ${{ matrix.blender }}
+    name: ${{ matrix.label }}
     needs: [test, blender-matrix]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
