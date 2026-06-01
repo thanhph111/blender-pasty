@@ -1,4 +1,4 @@
-name: CI
+name: Checks
 
 on:
   push:
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   commit-messages:
-    name: Validate commit messages
+    name: Check commit messages
     if: github.event_name == 'pull_request'
     timeout-minutes: 5
     permissions:
@@ -30,7 +30,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate conventional commits
+      - name: Check conventional commits
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -44,7 +44,7 @@ jobs:
           exit "$status"
 
   verify:
-    name: Verify
+    name: Run checks
     uses: ./.github/workflows/_verify.yml
     permissions:
       actions: write

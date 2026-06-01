@@ -1,4 +1,4 @@
-name: Verify
+name: Project checks
 
 on:
   workflow_call:
@@ -9,7 +9,7 @@ on:
         type: string
         default: pasty
       checkout_ref:
-        description: Git ref to check out before running verification
+        description: Git ref to check out before running checks
         required: false
         type: string
         default: ''
@@ -19,13 +19,13 @@ on:
         type: boolean
         default: false
       profile:
-        description: Verification depth. Use fast for PRs and full for scheduled/release-candidate runs.
+        description: Check depth. Use fast for PRs and full for scheduled/release-candidate runs.
         required: false
         type: string
         default: fast
 
 env:
-  # Keep Blender, dprint, and uv state inside the workspace so CI is repeatable.
+  # Keep Blender, dprint, and uv state inside the workspace so automated checks are repeatable.
   BLENDER_USER_CONFIG: ${{ github.workspace }}/.cache/blender-user/config
   BLENDER_USER_EXTENSIONS: ${{ github.workspace }}/.cache/blender-user/extensions
   BLENDER_USER_SCRIPTS: ${{ github.workspace }}/.cache/blender-user/scripts
@@ -84,7 +84,7 @@ jobs:
       - name: Install dependencies
         run: mise run deps
 
-      - name: Run lint checks
+      - name: Run lint
         run: mise run lint
 
       - name: Minimize uv cache
@@ -148,11 +148,11 @@ jobs:
 
           profile = "${{ inputs.profile }}"
           if profile == "fast":
-              targets = ["linux-blender-4.2", "linux-blender-5.1"]
+              targets = ["Linux, Blender 4.2", "Linux, Blender 5.1"]
           elif profile == "full":
               targets = [
-                  f"{platform}-blender-{blender}"
-                  for platform in ("linux", "windows", "macos")
+                  f"{platform}, Blender {blender}"
+                  for platform in ("Linux", "Windows", "macOS")
                   for blender in ("4.2", "4.5", "5.1")
               ]
           else:
@@ -169,7 +169,7 @@ jobs:
   blender:
     name: ${{ matrix.target }}
     needs: [test, blender-matrix]
-    runs-on: ${{ startsWith(matrix.target, 'linux-') && 'ubuntu-24.04' || startsWith(matrix.target, 'windows-') && 'windows-2025' || 'macos-15' }}
+    runs-on: ${{ startsWith(matrix.target, 'Linux,') && 'ubuntu-24.04' || startsWith(matrix.target, 'Windows,') && 'windows-2025' || 'macos-15' }}
     timeout-minutes: 30
     permissions:
       actions: write
@@ -201,9 +201,13 @@ jobs:
         shell: bash
         run: |
           case "${{ matrix.target }}" in
-            linux-blender-* | windows-blender-* | macos-blender-*)
+            Linux,\ Blender\ * | Windows,\ Blender\ * | macOS,\ Blender\ *)
               target="${{ matrix.target }}"
-              echo "blender=${target##*-blender-}" >> "$GITHUB_OUTPUT"
+              blender="${target##*Blender }"
+              platform="${target%%,*}"
+              cache_key="$(printf '%s-blender-%s' "$platform" "$blender" | tr '[:upper:]' '[:lower:]')"
+              echo "blender=${blender}" >> "$GITHUB_OUTPUT"
+              echo "cache_key=${cache_key}" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "Unknown Blender target: ${{ matrix.target }}" >&2
@@ -216,7 +220,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: .cache/blender
-          key: blender-${{ matrix.target }}-${{ runner.arch }}
+          key: blender-${{ steps.target.outputs.cache_key }}-${{ runner.arch }}
 
       - name: Install Blender
         id: install_blender
@@ -230,7 +234,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          BLENDER_CACHE_KEY: blender-${{ matrix.target }}-${{ runner.arch }}
+          BLENDER_CACHE_KEY: blender-${{ steps.target.outputs.cache_key }}-${{ runner.arch }}
         run: gh cache delete "$BLENDER_CACHE_KEY" || true
 
       - name: Save Blender cache
@@ -240,7 +244,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: .cache/blender
-          key: blender-${{ matrix.target }}-${{ runner.arch }}
+          key: blender-${{ steps.target.outputs.cache_key }}-${{ runner.arch }}
 
       - name: Print Blender version
         run: mise run blender run -- --version
@@ -287,7 +291,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: .cache/blender
-          key: blender-${{ runner.os }}-${{ runner.arch }}-5.1
+          key: blender-linux-blender-5.1-${{ runner.arch }}
 
       - name: Install Blender
         run: mise run blender install 5.1

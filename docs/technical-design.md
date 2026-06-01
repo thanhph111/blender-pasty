@@ -196,7 +196,7 @@ Headless tests can check:
 - image file paths and file URLs can be loaded
 - multiple image file paths create multiple target items
 
-Real clipboard behavior needs a local GUI smoke test, because headless Blender cannot fully prove system clipboard behavior. Hosted CI runners do not give us a stable system clipboard.
+Real clipboard behavior needs a local GUI smoke test, because headless Blender cannot fully prove system clipboard behavior. Hosted GitHub runners do not give us a stable system clipboard.
 
 Manual GUI checks should cover copying an image to the clipboard, then pasting as a 3D reference, as a 3D plane, into the Sequencer, and into the Shader Editor.
 

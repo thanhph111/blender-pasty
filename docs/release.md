@@ -4,7 +4,7 @@ This is the release path for GitHub and extensions.blender.org.
 
 The release uses two GitHub Actions workflows:
 
-- `.github/workflows/release-candidate.yml` (`Release Candidate`) runs the full checks on a `release/**` branch and uploads one package artifact.
+- `.github/workflows/release-candidate.yml` (`Release candidate`) runs the full checks on a `release/**` branch and uploads one package artifact.
 - `.github/workflows/release.yml` (`Release`) promotes that same package from a tag into a draft GitHub release.
 
 Keep this rule simple: build once, then promote the same zip. A tag must not rebuild or retest.
@@ -50,7 +50,7 @@ git switch -c release/v0.1.0
 git push origin release/v0.1.0
 ```
 
-This starts `Release Candidate`. It runs the full matrix:
+This starts `Release candidate`. It runs the full matrix:
 
 - Linux on Blender 4.2, 4.5, and current stable
 - Windows on Blender 4.2, 4.5, and current stable
@@ -75,7 +75,7 @@ gh run list --workflow release-candidate.yml
 
 ## GitHub release
 
-The GitHub release workflow reads the matching section from `CHANGELOG.md`. It does not build the zip. It finds a successful `Release Candidate` run for the same commit and downloads `pasty-release-package`.
+The GitHub release workflow reads the matching section from `CHANGELOG.md`. It does not build the zip. It finds a successful `Release candidate` run for the same commit and downloads `pasty-release-package`.
 
 To preview the notes locally:
 
@@ -98,7 +98,7 @@ The workflow creates or updates a draft GitHub release with:
 
 Review the draft release in GitHub, then publish it.
 
-If the automatic build lookup ever cannot find the right run, start the release workflow manually and pass the `Release Candidate` run ID.
+If the automatic build lookup ever cannot find the right run, start the release workflow manually and pass the `Release candidate` run ID.
 
 ## Failed tag recovery
 

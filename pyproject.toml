@@ -53,13 +53,13 @@ split-on-trailing-comma = false
 ]
 ".mise/tasks/blender.py" = [
     "PLR0912", # The command dispatcher and platform branches are clearer in one task.
-    "S202", # CI extracts official Blender archives downloaded from blender.org.
-    "S603", # CI intentionally launches local tools and Blender.
-    "S607", # CI runner tools are expected to be on PATH.
-    "T201", # CI helpers print useful paths in workflow logs.
+    "S202", # GitHub checks extract official Blender archives downloaded from blender.org.
+    "S603", # GitHub checks intentionally launch local tools and Blender.
+    "S607", # GitHub-hosted runner tools are expected to be on PATH.
+    "T201", # The Blender task prints useful paths in workflow logs.
 ]
 ".mise/tasks/release-notes.py" = [
-    "T201", # This task prints release notes for humans and CI.
+    "T201", # This task prints release notes for humans and release workflows.
 ]
 ".mise/tasks/test.py" = [
     "S603", # This task intentionally launches local tools and Blender.

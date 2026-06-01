@@ -10,7 +10,7 @@ on:
         required: true
         type: string
       build_run_id:
-        description: Successful Release Candidate run ID to promote. Leave empty to find it by tag commit.
+        description: Successful release candidate run ID to promote. Leave empty to find it by tag commit.
         required: false
         type: string
       upload_blender_extensions:
@@ -75,7 +75,7 @@ jobs:
           fi
 
           if [ -z "$build_run_id" ]; then
-            echo "No successful Release Candidate run found for ${tag} (${commit})." >&2
+            echo "No successful release candidate run found for ${tag} (${commit})." >&2
             echo "Push a release branch for this commit first, then push the tag." >&2
             exit 1
           fi
@@ -86,11 +86,11 @@ jobs:
           build_url="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${build_run_id}" --jq '.html_url')"
 
           if [ "$build_head_sha" != "$commit" ]; then
-            echo "Release Candidate ${build_run_id} belongs to ${build_head_sha}, not ${commit}." >&2
+            echo "Release candidate ${build_run_id} belongs to ${build_head_sha}, not ${commit}." >&2
             exit 1
           fi
           if [ "$build_status" != "completed" ] || [ "$build_conclusion" != "success" ]; then
-            echo "Release Candidate ${build_run_id} is ${build_status}/${build_conclusion}, not completed/success." >&2
+            echo "Release candidate ${build_run_id} is ${build_status}/${build_conclusion}, not completed/success." >&2
             exit 1
           fi
 

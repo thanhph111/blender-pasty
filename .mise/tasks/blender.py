@@ -1,10 +1,10 @@
 #!/usr/bin/env -S uv run -s --no-sync
 
-# [MISE] description="Blender CI helpers"
-# [USAGE] cmd install help="Install a Blender build for CI" {
+# [MISE] description="Blender check helpers"
+# [USAGE] cmd install help="Install a Blender build for automated checks" {
 # [USAGE]   arg "<version>" help="Blender version or series, such as 4.2 or 4.2.21"
 # [USAGE] }
-# [USAGE] cmd run help="Run the CI Blender binary" {
+# [USAGE] cmd run help="Run the Blender binary used by automated checks" {
 # [USAGE]   arg "[args]..." help="Arguments passed to Blender"
 # [USAGE] }
 
@@ -23,10 +23,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="blender")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    install = subparsers.add_parser("install", help="Install a Blender build for CI")
+    install = subparsers.add_parser("install", help="Install a Blender build for automated checks")
     install.add_argument("version")
 
-    run = subparsers.add_parser("run", help="Run the CI Blender binary")
+    run = subparsers.add_parser("run", help="Run the Blender binary used by automated checks")
     run.add_argument("args", nargs=argparse.REMAINDER)
 
     args = parser.parse_args()
@@ -120,7 +120,7 @@ def resolve_version(version: str, system: str, arch: str) -> str:
         raise RuntimeError(msg)
 
     suffix = blender_asset_suffix(system, arch)
-    # CI asks for series like 4.2 so it stays on the newest official patch.
+    # GitHub checks ask for series like 4.2 so they stay on the newest official patch.
     return latest_patch_version(version, suffix)
 
 
@@ -263,7 +263,7 @@ def extract_windows(archive: Path, root: Path) -> None:
 def extract_macos(archive: Path, root: Path) -> None:
     mount = root / "mount"
     mount.mkdir(exist_ok=True)
-    # Blender ships macOS builds as DMGs, so CI has to mount, copy, then detach.
+    # Blender ships macOS builds as DMGs, so GitHub checks mount, copy, then detach.
     subprocess.run(
         ["hdiutil", "attach", str(archive), "-mountpoint", str(mount), "-quiet", "-nobrowse"],
         check=True,

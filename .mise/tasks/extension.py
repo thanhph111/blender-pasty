@@ -34,7 +34,8 @@ def run_blender_extension(blender_path: str) -> None:
 
 def run_bpy_extension() -> None:
     try:
-        # CI can validate/build through the bpy wheel when a full Blender binary is not present.
+        # GitHub checks can validate/build through the bpy wheel when full
+        # Blender is not present.
         import bpy  # noqa: F401
         from bl_pkg.bl_extension_cli import cli_extension_handler  # ty: ignore[unresolved-import]
     except ImportError as error:

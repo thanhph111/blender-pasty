@@ -1,6 +1,6 @@
 # Development
 
-This repo uses `mise` as the command runner. `mise` pins the tools used by the repo, so local commands and CI use the same versions.
+This repo uses `mise` as the command runner. `mise` pins the tools used by the repo, so local commands and GitHub checks use the same versions.
 
 For the add-on design and ImagePaste comparison, see [technical-design.md](technical-design.md).
 
@@ -135,8 +135,8 @@ mise run test             validate the manifest and smoke-test the add-on
 mise run test package     build, install, and smoke-test the packaged zip
 mise run build            build dist/pasty-*.zip
 mise run release-notes    print release notes from CHANGELOG.md
-mise run blender install  install a Blender build for CI
-mise run blender run      run the CI Blender binary
+mise run blender install  install a Blender build for automated checks
+mise run blender run      run the Blender binary used by automated checks
 mise run dev paths        print dev paths
 mise run dev link         symlink the repo into the dev extension folder
 mise run dev repo-add     add the dev extension folder to Blender
@@ -144,8 +144,8 @@ mise run dev install      build and install the packaged extension
 mise run dev debug        launch Blender with debugpy listening
 ```
 
-## CI
+## GitHub checks
 
-`.github/workflows/ci.yml` runs the PR commit-message check, then calls `.github/workflows/_verify.yml`.
+`.github/workflows/checks.yml` runs the PR commit-message check, then calls `.github/workflows/_verify.yml`.
 
-The shared verify workflow runs lint, tests, Blender smoke targets, then package testing. The full release-candidate run checks Linux, Windows, and Apple Silicon macOS on Blender 4.2, 4.5, and current stable.
+The shared checks workflow runs lint, tests, Blender smoke targets, then package testing. The full release-candidate run checks Linux, Windows, and Apple Silicon macOS on Blender 4.2, 4.5, and current stable.

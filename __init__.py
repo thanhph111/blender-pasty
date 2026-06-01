@@ -773,7 +773,7 @@ def register_keymaps() -> None:
         return
 
     if bpy.context.window_manager is None:
-        # Headless Blender has no window manager. CI still needs register() to succeed.
+        # Headless checks have no window manager, but register() still needs to succeed.
         return
 
     kc = bpy.context.window_manager.keyconfigs.addon
