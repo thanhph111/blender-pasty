@@ -88,12 +88,12 @@ For each clipboard source, test these targets:
 
 - 3D View: `Add > Image > Paste as Reference`
 - 3D View: `Add > Image > Paste as Plane`
-- Sequencer: right-click, `Paste from Clipboard`
-- Shader Editor: right-click, `Paste from Clipboard`
+- Sequencer: right-click, `Paste Image Strip`
+- Shader Editor: right-click, `Paste Image Texture`
 
 Expected behavior:
 
-- Raw clipboard image data pastes as one image.
+- A screenshot or browser image copied to the clipboard pastes as one image.
 - Several copied image paths paste as several target items.
 - 3D View paste offsets several pasted images so they do not fully overlap.
 - Sequencer strips use the first free channel for their frame range.
@@ -123,7 +123,7 @@ Then in Blender:
 
 1. Open `Edit > Preferences > Get Extensions`.
 2. Choose `Install from Disk`.
-3. Select `dist/pasty-0.1.0.zip`.
+3. Select the built zip for the version being tested, such as `dist/pasty-*.zip`.
 4. Enable `Pasty`.
 5. Run the paste and copy checks above.
 

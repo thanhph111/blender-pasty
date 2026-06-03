@@ -1,6 +1,6 @@
 # Technical design
 
-Pasty is a Blender extension for pasting image data from the system clipboard into common Blender work areas.
+Pasty is a Blender extension for pasting images from the system clipboard into common Blender work areas.
 
 | Area          | Result             |
 | ------------- | ------------------ |
@@ -9,47 +9,71 @@ Pasty is a Blender extension for pasting image data from the system clipboard in
 | Sequencer     | Image strip        |
 | Shader Editor | Image texture node |
 
+For the product principles behind these choices, see [product-design.md](product-design.md).
+
 ## Core idea
 
-Pasty uses Blender's own image clipboard operator:
+Pasty treats a paste as two steps:
+
+1. Find the best image source from the clipboard.
+2. Prepare that image for the target Blender area.
+
+The source order is intentional:
+
+```text
+copied image files
+clipboard image
+```
+
+Copied files are checked first because they keep names, formats, paths, and multi-file selections.
+
+If no copied image files are found, Pasty uses Blender's own image clipboard operator:
 
 ```python
 bpy.ops.image.clipboard_paste()
 ```
 
-That is the main design choice.
+Pasty does not try to read operating-system image clipboard data itself. It lets Blender do that work.
 
-Pasty does not try to read the operating system image clipboard itself. It lets Blender do that work.
-
-If Blender does not find image data, Pasty checks Blender's plain text clipboard for image file paths and `file://` URLs. Several paths become several pasted images. That keeps copied-path workflows useful without adding a platform-specific clipboard layer.
+Today, copied file support reads Blender's text clipboard for image file paths and `file://` URLs. Several paths become several pasted images. Future platform-specific copied-file formats can be added only if they stay small and fit the same source order.
 
 This matters because clipboard image handling is different across macOS, Windows, Linux X11, Linux Wayland, screenshots, browsers, Photoshop, ShareX, and copied image files. Rebuilding all of that inside the add-on creates a lot of fragile platform code.
 
 ## Paste flow
 
-Blender's image clipboard paste operator belongs to the Image Editor. If the user is in the 3D View, Sequencer, or Shader Editor, Pasty briefly switches the current area to the Image Editor, runs Blender's paste command, then switches the area back.
+Blender's image clipboard paste operator belongs to the Image Editor. If Pasty needs Blender to read a copied screenshot or copied browser image while the user is in the 3D View, Sequencer, or Shader Editor, Pasty briefly switches the current area to the Image Editor, runs Blender's paste command, then switches the area back.
 
 ```mermaid
 flowchart TD
     A["User runs a Pasty paste command"] --> B["Pasty remembers the current editor"]
-    B --> C["Pasty switches that area to the Image Editor"]
-    C --> D["Blender reads the system clipboard"]
-    D --> E{"Did Blender create an image?"}
-    E -->|"Yes"| F["Pasty restores the original editor"]
-    F --> G["Pasty uses the new image in the target area"]
-    E -->|"No"| H["Pasty checks text clipboard paths and file URLs"]
-    H --> I{"Did Pasty load image files?"}
-    I -->|"Yes"| G
-    I -->|"No"| J["Pasty reports that no compatible image was found"]
+    B --> C["Pasty checks copied image file paths and file URLs"]
+    C --> D{"Did Pasty load image files?"}
+    D -->|"Yes"| G["Pasty prepares images for the target area"]
+    D -->|"No"| E["Pasty switches that area to the Image Editor"]
+    E --> F["Blender reads the clipboard image"]
+    F --> I["Pasty restores the original editor"]
+    I --> H{"Did Blender create an image?"}
+    H -->|"Yes"| G
+    H -->|"No"| J["Pasty reports that no compatible image was found"]
 ```
 
 The shared paste path lives in `temporary_image_editor()`, `paste_images_from_clipboard()`, and the image file helpers in `addon/clipboard.py`.
+
+`addon/storage.py` owns what happens after a source is found:
+
+- use the original file
+- pack into the `.blend`
+- save to the pasted images folder
+- save to Blender's temporary folder
+- gather pasted images beside the `.blend`
 
 The editor-specific behavior lives with the editor it changes:
 
 - `addon/areas/view_3d.py`
 - `addon/areas/shader_editor.py`
 - `addon/areas/sequencer.py`
+
+`addon/preferences.py` owns the small preferences panel and the generated filename template renderer. Storage uses that renderer, so the preview in preferences and the actual saved file names mean the same thing.
 
 `addon/registration.py` owns classes, menus, and shortcuts.
 
@@ -69,9 +93,9 @@ Clipboard work only happens when the user actually runs a paste command.
 
 ## 3D view reference paste
 
-When you paste as a reference, Pasty asks Blender to create an image from the clipboard, adds an Image Empty in the 3D View, and assigns the pasted image to that Empty. The result is a normal Blender image reference object.
+When you paste as a reference, Pasty gets an image from copied files or from Blender's clipboard paste, prepares storage, adds an Image Empty in the 3D View, and assigns the pasted image to that Empty. The result is a normal Blender image reference object.
 
-If the clipboard fallback finds several image files, Pasty creates one reference object per image and offsets them slightly.
+If several image files are copied, Pasty creates one reference object per image and offsets them slightly.
 
 ## 3D view mesh plane paste
 
@@ -85,39 +109,53 @@ bpy.ops.image.convert_to_mesh_plane()
 
 This is better than manually building the mesh, material, UVs, and texture node setup. Blender already owns that behavior.
 
-If the clipboard fallback finds several image files, Pasty creates one mesh plane per image and offsets them slightly.
+If several image files are copied, Pasty creates one mesh plane per image and offsets them slightly.
 
 ## Shader editor paste
 
 When you paste in the Shader Editor, Pasty uses the current node selection:
 
 - If an Image Texture node is selected, Pasty replaces that node's image.
-- Otherwise Pasty creates an Image Texture node at the cursor.
 - If a Principled BSDF node is selected, Pasty links the image color to Base Color.
+- Otherwise Pasty creates an Image Texture node at the cursor.
 
-If the clipboard fallback finds several image files, Pasty creates a vertical stack of image texture nodes. If an Image Texture node is selected, the first image replaces it and the remaining images become nearby nodes.
+If several image files are copied, Pasty creates a vertical stack of image texture nodes. If an Image Texture node is selected, the first image replaces it and the remaining images become nearby nodes.
 
 ## Sequencer paste
 
 The Sequencer is different.
 
-Blender's clipboard paste creates a generated image data-block. A data-block is Blender's internal object for data such as images, meshes, and materials. A generated image can exist inside Blender without a real file path.
-
 Sequencer image strips need a real image file path.
 
-So Sequencer paste has one extra step for generated images: Pasty saves the pasted image as a PNG before it creates the image strip. If the image came from a file path, Pasty reuses that path.
+So Sequencer paste has one extra storage step: every pasted image must resolve to a file path before Pasty creates the image strip.
 
-If the clipboard fallback finds several image files, Pasty creates strips in a row starting at the current frame.
+If the image came from a file path, Pasty uses the original path by default.
+
+If the image came from Blender's clipboard paste, Pasty saves the pasted image as a PNG.
+
+If several image files are copied, Pasty creates strips in a row starting at the current frame.
+
+Generated clipboard file names use the preference template:
+
+```text
+pasted-{date}-{time}-{number}
+```
+
+The template is the file name stem. Pasty always adds the fixed `.png` suffix because generated clipboard files are saved as PNG.
+
+The supported tokens are `{date}`, `{time}`, `{number}`, `{number:4}`, `{blend}`, `{year}`, `{month}`, `{day}`, `{hour}`, `{minute}`, and `{second}`. Date and time tokens use the user's local clock. `{number:4}` means a four-digit number such as `0001`. These cover the common naming patterns without turning the add-on into a file naming language.
+
+If a generated file name already exists, Pasty appends a number such as `-002`. It never overwrites existing files.
 
 If the `.blend` file is saved, Pasty writes to:
 
 ```text
-//pasty
+//pasted-images
 ```
 
-That means a `pasty` folder next to the `.blend` file.
+That means a `pasted-images` folder next to the `.blend` file.
 
-If the `.blend` file has not been saved yet, Pasty writes to the system temp folder.
+If the `.blend` file has not been saved yet, Pasty writes to Blender's temporary folder and marks those files so `Gather Pasted Images` can move them later.
 
 Because of this, the extension manifest declares both permissions:
 
@@ -141,13 +179,13 @@ It has separate clipboard code for each platform:
 
 That approach made sense before Blender had better built-in image clipboard support, but it creates many moving parts.
 
-Pasty asks Blender to read the clipboard, receives a Blender image data-block, and uses that image directly. It falls back to plain text paths or file URLs only when Blender does not find image data. It saves a file only when Sequencer needs one.
+Pasty uses copied file paths first, then asks Blender to read the clipboard image. It saves a file only when the target requires a file path or when the user chooses `Save to Folder`.
 
 The goal is not to become a bigger ImagePaste. The goal is to be smaller, more native to modern Blender, and less platform-fragile.
 
-## ImagePaste problems this design avoids
+## Why Pasty uses Blender clipboard support
 
-ImagePaste's public issue tracker shows the cost of owning platform clipboard code and old Blender APIs. These examples were checked on May 31, 2026.
+These ImagePaste issues show where platform clipboard code and older Blender APIs can break. These examples were checked on May 31, 2026.
 
 - macOS native pasteboard import failures: [#55](https://github.com/b-init/ImagePaste/issues/55), [#60](https://github.com/b-init/ImagePaste/issues/60), [#61](https://github.com/b-init/ImagePaste/issues/61)
 - Linux `xclip` or process failures: [#35](https://github.com/b-init/ImagePaste/issues/35), [#51](https://github.com/b-init/ImagePaste/issues/51), [#62](https://github.com/b-init/ImagePaste/issues/62)
@@ -163,12 +201,12 @@ Pasty avoids most of this by not owning platform clipboard extraction. Blender o
 
 Pasty intentionally does not try to be a full ImagePaste clone.
 
-It does not currently support:
+It does not support:
 
-- custom file naming preferences
-- moving pasted images after save
-- packing pasted images into the `.blend`
 - OS-specific file-drop clipboard formats beyond text paths and file URLs
+- moving user-owned files
+- moving all images in a `.blend`
+- save-time file moving
 - SVG or text clipboard handling
 
 Those features can be added later, but they should be added only when they fit the small native design.
@@ -179,7 +217,7 @@ Pasty depends on Blender's own clipboard support.
 
 That means behavior can differ by platform. Blender's image clipboard support is strongest on Windows, macOS, and Linux Wayland.
 
-Multiple-image paste works for clipboard text that exposes several image paths or file URLs. It does not mean Blender's native image clipboard operator can read several raw clipboard images at once.
+Multiple-image paste works for clipboard text that exposes several image paths or file URLs. It does not mean Blender's native image clipboard operator can read several clipboard images at once.
 
 Linux X11 may be weaker depending on Blender and the desktop environment.
 
@@ -190,7 +228,9 @@ This is still better than shipping our own Linux clipboard stack, because Blende
 - Use Blender's own operators when Blender already owns the behavior.
 - Do not read the operating system clipboard directly unless Blender's own API cannot do the job.
 - Do not switch editor areas inside `poll()`.
-- Only write files when Blender needs a real file path.
+- Treat copied files and copied pixels as different sources.
+- Never move a user-owned file.
+- Let `storage.py` own pack, save, temporary-folder, and gather decisions.
 - Keep the add-on small. A paste utility should not become a clipboard framework.
 
 ## Testing
@@ -203,6 +243,7 @@ Headless tests can check:
 - generated images can be saved to disk
 - image file paths and file URLs can be loaded
 - multiple image file paths create multiple target items
+- gathered images are copied beside the `.blend` without moving user files
 
 Real clipboard behavior needs a local GUI smoke test, because headless Blender cannot fully prove system clipboard behavior. Hosted GitHub runners do not give us a stable system clipboard.
 

@@ -1,41 +1,21 @@
-from datetime import UTC, datetime
-from pathlib import Path
-from tempfile import gettempdir
+from dataclasses import dataclass
 from typing import ClassVar
 
 import bpy
 
 from ..blender_types import OperatorReturn
 from ..clipboard import paste_failed, paste_images_from_clipboard
+from ..preferences import DEFAULT_SEQUENCE_STRIP_DURATION, values
+from ..storage import TEMP_FOLDER_WARNING, blender_path, file_path_for_sequencer
 
-SEQUENCE_STRIP_DURATION = 50
+SEQUENCE_STRIP_DURATION = DEFAULT_SEQUENCE_STRIP_DURATION
 SEQUENCE_MAX_CHANNEL = 128
 
 
-def pasted_images_dir() -> Path:
-    if bpy.data.filepath:
-        # Saved projects should keep generated clipboard images beside the .blend.
-        directory = Path(bpy.path.abspath("//pasty"))
-    else:
-        # Unsaved projects have no stable project folder yet.
-        directory = Path(gettempdir()) / "pasty"
-
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
-
-
-def saved_image_path(image: bpy.types.Image) -> Path:
-    filepath = bpy.path.abspath(image.filepath)
-    if filepath:
-        return Path(filepath)
-
-    # Raw clipboard images are generated data-blocks. Sequencer strips need a real file.
-    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
-    filepath = pasted_images_dir() / f"pasty-{timestamp}.png"
-    image.save_render(str(filepath))
-    image.filepath_raw = str(filepath)
-    image["pasty.filepath"] = str(filepath)
-    return filepath
+@dataclass(slots=True)
+class SequencePasteResult:
+    strips: list
+    used_temp_folder: bool = False
 
 
 def sequence_collection(sequence_editor):
@@ -87,17 +67,27 @@ def first_free_sequence_channel(strips, frame_start: int, frame_end: int) -> int
     raise RuntimeError(msg)
 
 
-def add_sequence_image_strips(strips, images: list[bpy.types.Image], frame_start: int) -> list:
+def sequence_strip_duration() -> int:
+    return values().sequence_strip_duration
+
+
+def add_sequence_image_strips(strips, pasted_images, frame_start: int) -> SequencePasteResult:
     image_strips = []
+    used_temp_folder = False
     try:
-        for offset_index, image in enumerate(images):
+        strip_duration = sequence_strip_duration()
+        for offset_index, pasted_image in enumerate(pasted_images):
             # Put multiple pasted images in a row so they do not overlap by default.
-            strip_start = frame_start + (offset_index * SEQUENCE_STRIP_DURATION)
-            strip_end = strip_start + SEQUENCE_STRIP_DURATION
+            strip_start = frame_start + (offset_index * strip_duration)
+            strip_end = strip_start + strip_duration
             channel = first_free_sequence_channel(strips, strip_start, strip_end)
-            filepath = saved_image_path(image)
+            filepath, used_temp = file_path_for_sequencer(pasted_image, offset_index + 1)
+            used_temp_folder = used_temp_folder or used_temp
             image_strip = strips.new_image(
-                name=image.name, filepath=str(filepath), channel=channel, frame_start=strip_start
+                name=pasted_image.image.name,
+                filepath=blender_path(filepath),
+                channel=channel,
+                frame_start=strip_start,
             )
             set_sequence_strip_end(image_strip, strip_end)
             image_strips.append(image_strip)
@@ -106,14 +96,14 @@ def add_sequence_image_strips(strips, images: list[bpy.types.Image], frame_start
         for image_strip in image_strips:
             strips.remove(image_strip)
         raise
-    return image_strips
+    return SequencePasteResult(image_strips, used_temp_folder)
 
 
 class PASTY_OT_sequence_editor_paste(bpy.types.Operator):
     """Paste images from the clipboard"""
 
     bl_idname = "pasty.sequence_editor_paste"
-    bl_label = "Paste from Clipboard"
+    bl_label = "Paste Image Strip"
     bl_options: ClassVar[set[str]] = {"UNDO_GROUPED"}  # ty: ignore[invalid-attribute-override]
 
     def execute(self, context: bpy.types.Context) -> OperatorReturn:
@@ -121,25 +111,21 @@ class PASTY_OT_sequence_editor_paste(bpy.types.Operator):
             self.report({"ERROR"}, "No active scene")
             return {"CANCELLED"}
 
-        images = paste_images_from_clipboard(context)
-        if not images:
+        pasted_images = paste_images_from_clipboard(context)
+        if not pasted_images:
             return paste_failed(self)
 
         sequence_editor = context.scene.sequence_editor or context.scene.sequence_editor_create()
         strips = sequence_collection(sequence_editor)
         current_frame = context.scene.frame_current
-        # saved_image_path() gives generated images a filepath, so check this before saving.
-        will_save_generated_images_to_temp = not bpy.data.filepath and any(
-            not bpy.path.abspath(image.filepath) for image in images
-        )
         try:
-            add_sequence_image_strips(strips, images, current_frame)
+            result = add_sequence_image_strips(strips, pasted_images, current_frame)
         except RuntimeError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
 
-        if will_save_generated_images_to_temp:
-            self.report({"WARNING"}, "Unsaved .blend: pasted images were saved to the temp folder")
+        if result.used_temp_folder:
+            self.report({"WARNING"}, TEMP_FOLDER_WARNING)
 
         return {"FINISHED"}
 
@@ -152,7 +138,7 @@ class PASTY_OT_sequence_editor_paste(bpy.types.Operator):
 def sequence_editor_paste_context_menu_draw(self, _context: bpy.types.Context) -> None:
     """Draw the Paste operator in the Sequence Editor context menu."""
     self.layout.separator()
-    self.layout.operator(PASTY_OT_sequence_editor_paste.bl_idname, icon="IMAGE_PLANE")
+    self.layout.operator(PASTY_OT_sequence_editor_paste.bl_idname, icon="FILE_IMAGE")
 
 
 classes = (PASTY_OT_sequence_editor_paste,)

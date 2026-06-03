@@ -15,11 +15,11 @@ It can also copy images back to the clipboard from image reference objects, text
 
 ## Why Pasty
 
-Pasty is meant to supersede the older ImagePaste-style workflow for modern Blender.
+Pasty builds on the older ImagePaste idea for modern Blender.
 
-ImagePaste solved a real problem by reading the operating system clipboard with platform-specific code. Pasty keeps the same spirit, but uses Blender's own image clipboard support first. That makes the add-on smaller and less fragile across macOS, Windows, Linux X11, Linux Wayland, screenshots, browsers, and image editors.
+ImagePaste solved a real problem by reading the operating system clipboard with platform-specific code. Pasty keeps the same spirit, but uses Blender's own image clipboard support instead of shipping a large clipboard backend. That makes the add-on smaller and less fragile across macOS, Windows, Linux X11, Linux Wayland, screenshots, browsers, and image editors.
 
-If Blender does not find raw image data, Pasty also checks Blender's text clipboard for image file paths and `file://` URLs. Several copied paths paste as several images.
+Pasty checks Blender's text clipboard for copied image file paths and `file://` URLs first. Several copied paths paste as several images. If no image paths are found, Pasty asks Blender for a screenshot or image copied from a browser or image editor.
 
 ## Install
 
@@ -54,7 +54,7 @@ Shortcuts:
 
 ### Shader editor
 
-Right-click in the Shader Editor and choose `Paste from Clipboard`.
+Right-click in the Shader Editor and choose `Paste Image Texture`.
 
 Pasty follows the current node selection:
 
@@ -73,7 +73,7 @@ Shortcut:
 
 ### Sequencer
 
-Right-click in the Sequencer and choose `Paste from Clipboard`.
+Right-click in the Sequencer and choose `Paste Image Strip`.
 
 Pasty creates image strips starting at the current frame. If several image paths are copied, Pasty places the strips in a row.
 
@@ -84,21 +84,80 @@ Shortcut:
 <!-- TODO: add screenshot of Sequencer context menu. -->
 <!-- TODO: add GIF showing several copied image paths becoming several image strips. -->
 
-## Saved images
+## Saved images and project folders
 
-Blender can keep a raw clipboard image as generated image data. Generated image data lives inside Blender and may not have a real file path.
+Pasty follows Blender's normal file model:
 
-Sequencer image strips need a real file path, so Pasty saves generated clipboard images before creating strips.
+- Copied image paths use the original files by default.
+- Clipboard images are packed into the `.blend` by default. Save the `.blend` before sharing it.
+- Sequencer image strips need real files, so clipboard images pasted into the Sequencer are saved as PNG files.
 
-If the `.blend` file is saved, Pasty writes generated images to:
+These defaults keep copied library files untouched and keep screenshots or browser images with the `.blend`.
+
+If the `.blend` file is saved, Sequencer clipboard images are saved to:
 
 ```text
-//pasty
+//pasted-images
 ```
 
-That means a `pasty` folder next to the `.blend` file.
+That means a `pasted-images` folder next to the `.blend` file.
 
-If the `.blend` file has not been saved yet, Pasty writes generated images to the system temp folder and shows a warning.
+If the `.blend` file has not been saved yet, Sequencer clipboard images are saved to Blender's temporary folder and Pasty shows a warning.
+
+To gather pasted images beside the `.blend`, use:
+
+```text
+File > External Data > Gather Pasted Images
+```
+
+This copies user-owned pasted files and moves only temporary files created by Pasty.
+
+If you pasted before saving the `.blend`, save the file first, then run `Gather Pasted Images`.
+
+<!-- TODO: add screenshot of Pasty preferences showing Storage, Naming, and Sequencer settings. -->
+
+## File name templates
+
+Pasty uses `Generated File Name` for clipboard images that need a PNG file. The field is the name pattern only. Pasty shows and adds the fixed `.png` suffix.
+
+Default:
+
+```text
+pasted-{date}-{time}-{number}
+```
+
+Examples:
+
+| Template                        | Fixed suffix | Example result                   |
+| ------------------------------- | ------------ | -------------------------------- |
+| `pasted-{date}-{time}-{number}` | `.png`       | `pasted-20260603-143522-001.png` |
+| `{blend}-{number:4}`            | `.png`       | `project-0001.png`               |
+| `shot-{year}-{month}-{day}`     | `.png`       | `shot-2026-06-03.png`            |
+
+Tokens:
+
+| Token        | Meaning                                      | Example    |
+| ------------ | -------------------------------------------- | ---------- |
+| `{date}`     | Local date as `YYYYMMDD`                     | `20260603` |
+| `{time}`     | Local time as `HHMMSS`                       | `143522`   |
+| `{number}`   | Three-digit paste number                     | `001`      |
+| `{number:4}` | Paste number with the digit width you choose | `0001`     |
+| `{blend}`    | Current `.blend` file name without `.blend`  | `project`  |
+| `{year}`     | Four-digit year                              | `2026`     |
+| `{month}`    | Two-digit month                              | `06`       |
+| `{day}`      | Two-digit day                                | `03`       |
+| `{hour}`     | Two-digit hour, 24-hour clock                | `14`       |
+| `{minute}`   | Two-digit minute                             | `35`       |
+| `{second}`   | Two-digit second                             | `22`       |
+
+Pasty always writes generated clipboard files as PNG. Leave `.png` out of the template field; the suffix is shown beside the field and added for you.
+
+Pasty does not overwrite existing files. If the name already exists, Pasty adds a number:
+
+```text
+pasted-20260603-143522-001.png
+pasted-20260603-143522-001-002.png
+```
 
 ## Notes
 
@@ -111,6 +170,8 @@ Linux users should test the same workflow on their actual desktop session. Wayla
 Developer setup lives in [docs/development.md](docs/development.md).
 
 Technical design notes live in [docs/technical-design.md](docs/technical-design.md).
+
+Product design notes live in [docs/product-design.md](docs/product-design.md).
 
 Testing notes live in [docs/testing.md](docs/testing.md).
 

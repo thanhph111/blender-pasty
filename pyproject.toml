@@ -52,6 +52,12 @@ split-on-trailing-comma = false
     "S101", # Blender operators use assertions for runtime context checks.
     "TID252", # Blender loads extensions under bl_ext.*, so parent-relative imports are correct.
 ]
+"addon/preferences.py" = [
+    "N801", # Blender preference class names use the add-on prefix.
+]
+"addon/storage.py" = [
+    "N801", # Blender operator class names use the add-on prefix.
+]
 ".mise/tasks/extension.py" = [
     "PLC0415", # The bpy fallback imports Blender-owned modules only when needed.
     "S603", # This task intentionally runs the local Blender binary.

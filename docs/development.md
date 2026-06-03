@@ -2,7 +2,9 @@
 
 This repo uses `mise` as the command runner. `mise` pins the tools used by the repo, so local commands and GitHub checks use the same versions.
 
-For the add-on design and ImagePaste comparison, see [technical-design.md](technical-design.md).
+For the product vision and preference design, see [product-design.md](product-design.md).
+
+For code boundaries and ImagePaste comparison, see [technical-design.md](technical-design.md).
 
 For real clipboard checks, release checks, and packaged install testing, see [testing.md](testing.md).
 
@@ -57,7 +59,9 @@ __init__.py
 addon/
   clipboard.py
   image_lookup.py
+  preferences.py
   registration.py
+  storage.py
   areas/
     view_3d.py
     shader_editor.py
@@ -100,7 +104,7 @@ In Blender, enable `Pasty` once. After editing source files, use:
 Blender > System > Reload Scripts
 ```
 
-Most edits will be in `addon/areas/`, `addon/clipboard.py`, or `addon/image_lookup.py`.
+Most placement edits will be in `addon/areas/`. Clipboard source edits live in `addon/clipboard.py`. File handling edits live in `addon/storage.py`.
 
 To test the packaged extension instead of the live symlink:
 

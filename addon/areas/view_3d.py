@@ -10,6 +10,7 @@ from ..clipboard import (
     paste_images_from_clipboard,
 )
 from ..image_lookup import image_from_object
+from ..storage import TEMP_FOLDER_WARNING, prepare_images_for_blender_data
 
 VIEW3D_IMAGE_OFFSET = 1.0
 
@@ -72,13 +73,16 @@ class PASTY_OT_view3d_paste_reference(bpy.types.Operator):
     bl_options: ClassVar[set[str]] = {"UNDO_GROUPED"}  # ty: ignore[invalid-attribute-override]
 
     def execute(self, context: bpy.types.Context) -> OperatorReturn:
-        images = paste_images_from_clipboard(context)
-        if not images:
+        pasted_images = paste_images_from_clipboard(context)
+        if not pasted_images:
             return paste_failed(self)
-        for offset_index, image in enumerate(images):
+        prepared = prepare_images_for_blender_data(pasted_images)
+        for offset_index, image in enumerate(prepared.images):
             if not insert_image_as_reference(context, image, offset_index):
                 self.report({"ERROR"}, "Could not create a reference image")
                 return {"CANCELLED"}
+        if prepared.used_temp_folder:
+            self.report({"WARNING"}, TEMP_FOLDER_WARNING)
         return {"FINISHED"}
 
     @classmethod
@@ -106,10 +110,11 @@ class PASTY_OT_view3d_paste_plane(bpy.types.Operator):
     bl_options: ClassVar[set[str]] = {"UNDO_GROUPED"}  # ty: ignore[invalid-attribute-override]
 
     def execute(self, context: bpy.types.Context) -> OperatorReturn:
-        images = paste_images_from_clipboard(context)
-        if not images:
+        pasted_images = paste_images_from_clipboard(context)
+        if not pasted_images:
             return paste_failed(self)
-        for offset_index, image in enumerate(images):
+        prepared = prepare_images_for_blender_data(pasted_images)
+        for offset_index, image in enumerate(prepared.images):
             if not insert_image_as_reference(context, image, offset_index):
                 self.report({"ERROR"}, "Could not create an image plane")
                 return {"CANCELLED"}
@@ -117,6 +122,8 @@ class PASTY_OT_view3d_paste_plane(bpy.types.Operator):
             if result != {"FINISHED"}:
                 self.report({"ERROR"}, "Could not convert the reference image to a mesh plane")
                 return {"CANCELLED"}
+        if prepared.used_temp_folder:
+            self.report({"WARNING"}, TEMP_FOLDER_WARNING)
         return {"FINISHED"}
 
     @classmethod

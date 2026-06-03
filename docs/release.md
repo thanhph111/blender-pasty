@@ -13,7 +13,7 @@ Keep this rule simple: build once, then promote the same zip. A tag must not reb
 
 `CHANGELOG.md` is the source for release notes.
 
-Keep it human-written. Do not paste raw commit logs into it. At release time:
+Write release notes for users instead of copying raw commit logs. At release time:
 
 1. Move the useful `Unreleased` entries into a new version section.
 2. Use the date format `YYYY-MM-DD`.
@@ -111,24 +111,22 @@ git tag -s v0.1.0 -m "Pasty 0.1.0"
 git push origin v0.1.0
 ```
 
-Do not leave a known-bad tag in the repository. A tag is the "promote this exact build" signal.
+Remove a known-bad tag because a tag is the "promote this exact build" signal.
 
 ## First Blender Extensions submission
 
 The first Blender Extensions submission is manual:
 
-1. Build the zip:
+1. Publish the GitHub release first.
+2. Download the `dist/pasty-*.zip` asset from the GitHub release, or download the `pasty-release-package` artifact from the matching successful `Release candidate` run.
+3. Open <https://extensions.blender.org/submit/>.
+4. Sign in with Blender ID.
+5. Upload the same `pasty-*.zip` that was promoted by GitHub release.
+6. Fill in the listing text.
+7. Add screenshots and GIFs.
+8. Submit for review.
 
-   ```bash
-   mise run test package
-   ```
-
-2. Open <https://extensions.blender.org/submit/>.
-3. Sign in with Blender ID.
-4. Upload `dist/pasty-0.1.0.zip`.
-5. Fill in the listing text.
-6. Add screenshots and GIFs.
-7. Submit for review.
+For Blender Extensions submission, use the same zip that passed the release-candidate workflow.
 
 The extension is held for review before it appears publicly.
 
@@ -148,7 +146,7 @@ Set a GitHub repository variable named:
 BLENDER_EXTENSIONS_ID
 ```
 
-For Pasty this should probably be:
+Use the extension slug shown on Blender Extensions after the first submission. If Blender accepts the default slug, set it to:
 
 ```text
 pasty
@@ -159,10 +157,11 @@ Then run the release workflow manually, pass the tag, and enable the Blender Ext
 The API call shape is:
 
 ```bash
-mise run --quiet release-notes -- 0.1.0 > dist/RELEASE_NOTES.md
+VERSION=<version>
+mise run --quiet release-notes -- "$VERSION" > dist/RELEASE_NOTES.md
 curl -X POST "https://extensions.blender.org/api/v1/extensions/$BLENDER_EXTENSIONS_ID/versions/upload/" \
   -H "Authorization: Bearer $BLENDER_EXTENSION_TOKEN" \
-  -F "version_file=@dist/pasty-0.1.0.zip" \
+  -F "version_file=@dist/pasty-$VERSION.zip" \
   -F "release_notes=<dist/RELEASE_NOTES.md"
 ```
 

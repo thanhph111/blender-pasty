@@ -10,6 +10,7 @@ from ..clipboard import (
     paste_images_from_clipboard,
 )
 from ..image_lookup import image_from_node
+from ..storage import TEMP_FOLDER_WARNING, prepare_images_for_blender_data
 
 SHADER_NODE_VERTICAL_SPACING = 260
 
@@ -127,7 +128,7 @@ class PASTY_OT_shader_editor_paste(bpy.types.Operator):
     """Paste images from the clipboard"""
 
     bl_idname = "pasty.shader_editor_paste"
-    bl_label = "Paste from Clipboard"
+    bl_label = "Paste Image Texture"
     bl_options: ClassVar[set[str]] = {"UNDO_GROUPED"}  # ty: ignore[invalid-attribute-override]
 
     def execute(self, context: bpy.types.Context) -> OperatorReturn:
@@ -139,13 +140,16 @@ class PASTY_OT_shader_editor_paste(bpy.types.Operator):
             "No active node tree found in the Node Editor"
         )
 
-        images = paste_images_from_clipboard(context)
-        if not images:
+        pasted_images = paste_images_from_clipboard(context)
+        if not pasted_images:
             return paste_failed(self)
 
+        prepared = prepare_images_for_blender_data(pasted_images)
         paste_images_into_shader_tree(
-            context.space_data.edit_tree, images, context.space_data.cursor_location
+            context.space_data.edit_tree, prepared.images, context.space_data.cursor_location
         )
+        if prepared.used_temp_folder:
+            self.report({"WARNING"}, TEMP_FOLDER_WARNING)
         return {"FINISHED"}
 
     @classmethod

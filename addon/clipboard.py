@@ -1,13 +1,19 @@
 import sys
 from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import bpy
 
 from .blender_types import OperatorReturn
+from .storage import (
+    SOURCE_CLIPBOARD_IMAGE,
+    SOURCE_COPIED_FILE,
+    STORAGE_ORIGINAL_FILE,
+    mark_pasted_image,
+)
 
 DEFAULT_IMAGE_FILE_EXTENSIONS = frozenset(
     {
@@ -37,6 +43,13 @@ DEFAULT_IMAGE_FILE_EXTENSIONS = frozenset(
 )
 
 
+@dataclass(slots=True)
+class PastedImage:
+    image: bpy.types.Image
+    source_kind: str
+    source_path: Path | None = None
+
+
 @contextmanager
 def temporary_image_editor(area: bpy.types.Area) -> Generator[bpy.types.Area, None, None]:
     """Temporarily switch an area to the Image Editor."""
@@ -55,26 +68,32 @@ def temporary_image_editor(area: bpy.types.Area) -> Generator[bpy.types.Area, No
             area.ui_type = former_ui_type
 
 
-def paste_images_from_clipboard(context: bpy.types.Context) -> list[bpy.types.Image]:
-    """Paste images from the clipboard into Blender image data-blocks."""
-    # Prefer Blender's native raw-image path. Only fall back to text paths if that fails.
+def paste_images_from_clipboard(context: bpy.types.Context) -> list[PastedImage]:
+    """Paste images from the clipboard into Blender images."""
+    # Copied files are the richer source when they exist: they keep names,
+    # multiple selections, source paths, and real file formats.
+    file_images = paste_image_files_from_clipboard(context)
+    if file_images:
+        return file_images
+
+    # Clipboard pixels cover screenshots, browsers, and image editors.
     image = paste_image_data_from_clipboard(context)
     if image is not None:
         return [image]
 
-    return paste_image_files_from_clipboard(context)
+    return []
 
 
 def image_clipboard_paste_result() -> OperatorReturn | None:
     # Blender raises RuntimeError when the operator's poll check fails.
-    # For Pasty, that is just "no raw image data"; the text-path fallback should still run.
+    # For Pasty, that is just "no clipboard image"; the text-path fallback should still run.
     try:
         return bpy.ops.image.clipboard_paste()
     except RuntimeError:
         return None
 
 
-def paste_image_data_from_clipboard(context: bpy.types.Context) -> bpy.types.Image | None:
+def paste_image_data_from_clipboard(context: bpy.types.Context) -> PastedImage | None:
     if context.area is None:
         return None
 
@@ -85,7 +104,7 @@ def paste_image_data_from_clipboard(context: bpy.types.Context) -> bpy.types.Ima
         return None
 
     # The Blender operator returns only a status, not the new image.
-    # Compare image keys before and after to find the data-block it created.
+    # Compare image keys before and after to find the image it created.
     keys_after = set(bpy.data.images.keys())
     new_keys = keys_after - keys_before
     if not new_keys:
@@ -94,20 +113,11 @@ def paste_image_data_from_clipboard(context: bpy.types.Context) -> bpy.types.Ima
     image_id = new_keys.pop()
     image = bpy.data.images[image_id]
 
-    return mark_pasted_image(image)
+    mark_pasted_image(image, source_kind=SOURCE_CLIPBOARD_IMAGE)
+    return PastedImage(image, SOURCE_CLIPBOARD_IMAGE)
 
 
-def mark_pasted_image(image: bpy.types.Image, source_path: Path | None = None) -> bpy.types.Image:
-    # These custom props make future cleanup/move tools possible without a database.
-    image["pasty.pasted"] = True
-    image["pasty.paste_time"] = datetime.now(UTC).isoformat()
-    if source_path is not None:
-        image["pasty.source_path"] = str(source_path)
-
-    return image
-
-
-def paste_image_files_from_clipboard(context: bpy.types.Context) -> list[bpy.types.Image]:
+def paste_image_files_from_clipboard(context: bpy.types.Context) -> list[PastedImage]:
     if context.window_manager is None:
         return []
 
@@ -117,7 +127,7 @@ def paste_image_files_from_clipboard(context: bpy.types.Context) -> list[bpy.typ
     for filepath in image_file_paths_from_clipboard_text(context.window_manager.clipboard):
         image = load_image_file(filepath)
         if image is not None:
-            images.append(image)
+            images.append(PastedImage(image, SOURCE_COPIED_FILE, filepath))
 
     return images
 
@@ -141,19 +151,23 @@ def image_file_path_from_clipboard_line(line: str) -> Path | None:
         return None
 
     parsed = urlparse(value)
+    is_network_file_url = False
     if parsed.scheme == "file":
         # File URLs are the common cross-platform text form for copied files.
         value = unquote(parsed.path)
         if parsed.netloc and parsed.netloc != "localhost":
+            is_network_file_url = True
             value = f"//{parsed.netloc}{value}"
         if sys.platform == "win32" and value.startswith("/") and Path(value[1:]).drive:
             # Windows file URLs look like /C:/path after parsing; pathlib needs C:/path.
             value = value[1:]
 
-    path = Path(value).expanduser()
-    if not path.is_absolute():
-        # Let Blender resolve //project-relative paths.
-        path = Path(bpy.path.abspath(str(path)))
+    if value.startswith("//") and not is_network_file_url:
+        path = Path(bpy.path.abspath(value))
+    else:
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            path = Path(bpy.path.abspath(str(path)))
     image_extensions = getattr(bpy.path, "extensions_image", DEFAULT_IMAGE_FILE_EXTENSIONS)
     if path.suffix.lower() not in image_extensions:
         return None
@@ -168,7 +182,12 @@ def load_image_file(filepath: Path) -> bpy.types.Image | None:
         image = bpy.data.images.load(str(filepath), check_existing=True)
     except RuntimeError:
         return None
-    return mark_pasted_image(image, filepath)
+    return mark_pasted_image(
+        image,
+        source_kind=SOURCE_COPIED_FILE,
+        source_path=filepath,
+        storage_kind=STORAGE_ORIGINAL_FILE,
+    )
 
 
 def paste_failed(operator: bpy.types.Operator) -> OperatorReturn:

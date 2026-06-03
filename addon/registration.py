@@ -1,11 +1,19 @@
 import bpy
 
+from . import preferences, storage
 from .areas import sequencer, shader_editor, view_3d
 
 area_modules = (view_3d, sequencer, shader_editor)
 
-classes = tuple(cls for area_module in area_modules for cls in area_module.classes)
-menu_hooks = tuple(hook for area_module in area_modules for hook in area_module.menu_hooks)
+classes = (
+    preferences.PASTY_AddonPreferences,
+    *storage.classes,
+    *(cls for area_module in area_modules for cls in area_module.classes),
+)
+menu_hooks = (
+    *storage.menu_hooks,
+    *(hook for area_module in area_modules for hook in area_module.menu_hooks),
+)
 keymap_specs = tuple(spec for area_module in area_modules for spec in area_module.keymap_specs)
 
 addon_keymaps: list[tuple[bpy.types.KeyMap, bpy.types.KeyMapItem]] = []

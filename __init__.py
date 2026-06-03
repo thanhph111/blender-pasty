@@ -7,6 +7,8 @@ from typing import Any
 package_name = __package__ or __name__
 
 blender_types = importlib.import_module(f"{package_name}.addon.blender_types")
+preferences = importlib.import_module(f"{package_name}.addon.preferences")
+storage = importlib.import_module(f"{package_name}.addon.storage")
 clipboard = importlib.import_module(f"{package_name}.addon.clipboard")
 image_lookup = importlib.import_module(f"{package_name}.addon.image_lookup")
 sequencer = importlib.import_module(f"{package_name}.addon.areas.sequencer")
@@ -23,6 +25,8 @@ registration: Any = importlib.import_module(f"{package_name}.addon.registration"
 # newest code after an edit.
 if "register" in locals():
     importlib.reload(blender_types)
+    importlib.reload(preferences)
+    importlib.reload(storage)
     importlib.reload(clipboard)
     importlib.reload(image_lookup)
     importlib.reload(sequencer)
