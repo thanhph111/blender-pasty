@@ -359,7 +359,12 @@ def update_sequence_image_paths(old_path: Path, new_path: Path) -> None:
         sequence_editor = scene.sequence_editor
         if sequence_editor is None:
             continue
-        for strip in sequence_editor.strips_all:
+        # Blender 5 renamed the all-strips collection from sequences_all to strips_all.
+        # Gather needs both names because Blender 4.2 LTS is still supported.
+        all_strips = getattr(sequence_editor, "strips_all", None)
+        if all_strips is None:
+            all_strips = sequence_editor.sequences_all
+        for strip in all_strips:
             if strip.type != "IMAGE":
                 continue
             directory = Path(bpy.path.abspath(strip.directory))
