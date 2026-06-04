@@ -18,14 +18,8 @@ blender_version_min = "4.2.0"
 license = [
     "SPDX:GPL-3.0-or-later",
 ]
-
-# Optional list of supported platforms. If omitted, the extension will be available in all operating systems.
-platforms = [
-    "windows-arm64",
-    "windows-x64",
-    "macos-arm64",
-    "macos-x64",
-    "linux-x64",
+copyright = [
+    "2026 thanhph111",
 ]
 
 # Optional: add-ons can list which resources they will require:
