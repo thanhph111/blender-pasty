@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Read native copied image file lists from Windows, macOS, and common Linux clipboard tools before falling back to Blender image paste.
+
 ## [0.1.0] - 2026-06-01
 
 First preview release.

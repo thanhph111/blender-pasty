@@ -1,6 +1,10 @@
+import ctypes
+import shutil
+import subprocess
 import sys
-from collections.abc import Generator
+from collections.abc import Generator, Iterable, Sequence
 from contextlib import contextmanager
+from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -41,6 +45,31 @@ DEFAULT_IMAGE_FILE_EXTENSIONS = frozenset(
         ".webp",
     }
 )
+CLIPBOARD_COMMAND_TIMEOUT_SECONDS = 2
+LINUX_FILE_CLIPBOARD_TYPES = ("x-special/gnome-copied-files", "text/uri-list")
+MACOS_FILE_URL_SCRIPT = """
+ObjC.import("AppKit");
+
+const pasteboard = $.NSPasteboard.generalPasteboard;
+const classes = $.NSArray.arrayWithObject($.NSURL);
+const options = $.NSDictionary.dictionaryWithObjectForKey(
+  true,
+  $.NSPasteboardURLReadingFileURLsOnlyKey
+);
+const urls = pasteboard.readObjectsForClassesOptions(classes, options);
+const paths = [];
+
+if (urls) {
+  for (let index = 0; index < urls.count; index++) {
+    const url = urls.objectAtIndex(index);
+    if (url.isFileURL) {
+      paths.push(ObjC.unwrap(url.path));
+    }
+  }
+}
+
+paths.join("\\n");
+"""
 
 
 @dataclass(slots=True)
@@ -121,10 +150,8 @@ def paste_image_files_from_clipboard(context: bpy.types.Context) -> list[PastedI
     if context.window_manager is None:
         return []
 
-    # This is Blender's text clipboard, not a direct OS clipboard reader.
-    # It covers copied paths and file:// URLs without a platform clipboard layer.
     images = []
-    for filepath in image_file_paths_from_clipboard_text(context.window_manager.clipboard):
+    for filepath in image_file_paths_from_clipboard(context.window_manager.clipboard):
         image = load_image_file(filepath)
         if image is not None:
             images.append(PastedImage(image, SOURCE_COPIED_FILE, filepath))
@@ -132,12 +159,43 @@ def paste_image_files_from_clipboard(context: bpy.types.Context) -> list[PastedI
     return images
 
 
+def image_file_paths_from_clipboard(text: str) -> list[Path]:
+    text_paths = image_file_paths_from_clipboard_text(text)
+
+    if sys.platform in {"win32", "darwin"}:
+        native_paths = existing_image_file_paths(platform_clipboard_file_paths())
+        if native_paths:
+            return existing_image_file_paths([*native_paths, *text_paths])
+
+    # File managers often use native copied-file formats that are not exposed as
+    # Blender text. Read only those file-list formats here; raw image pixels still
+    # belong to bpy.ops.image.clipboard_paste().
+    if text_paths:
+        return text_paths
+
+    # On Linux, Blender/Wayland usually exposes text/uri-list through the text
+    # clipboard already. wl-paste/xclip are optional fallbacks for desktop sessions
+    # where Blender gets no useful text.
+    return existing_image_file_paths(platform_clipboard_file_paths())
+
+
 def image_file_paths_from_clipboard_text(text: str) -> list[Path]:
-    paths: list[Path] = []
-    seen: set[Path] = set()
+    candidates = []
     for line in text.splitlines():
         path = image_file_path_from_clipboard_line(line)
-        if path is None or path in seen:
+        if path is not None:
+            candidates.append(path)
+    return existing_image_file_paths(candidates)
+
+
+def existing_image_file_paths(candidates: Iterable[Path]) -> list[Path]:
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    image_extensions = getattr(bpy.path, "extensions_image", DEFAULT_IMAGE_FILE_EXTENSIONS)
+    for path in candidates:
+        if path.suffix.lower() not in image_extensions:
+            continue
+        if not path.is_file() or path in seen:
             continue
         paths.append(path)
         seen.add(path)
@@ -147,7 +205,7 @@ def image_file_paths_from_clipboard_text(text: str) -> list[Path]:
 def image_file_path_from_clipboard_line(line: str) -> Path | None:
     value = line.strip().strip("\"'")
     # Some file managers put an operation marker before the file list.
-    if not value or value in {"copy", "cut"}:
+    if not value or value in {"copy", "cut"} or value.startswith("#"):
         return None
 
     parsed = urlparse(value)
@@ -174,6 +232,147 @@ def image_file_path_from_clipboard_line(line: str) -> Path | None:
     if not path.is_file():
         return None
     return path
+
+
+def platform_clipboard_file_paths() -> list[Path]:
+    if sys.platform == "win32":
+        return windows_clipboard_file_paths()
+    if sys.platform == "darwin":
+        return macos_clipboard_file_paths()
+    if sys.platform.startswith("linux"):
+        return linux_clipboard_file_paths()
+    return []
+
+
+def windows_clipboard_file_paths() -> list[Path]:
+    # Windows Explorer exposes copied files through CF_HDROP. Blender can read a
+    # single image file from that format as pixels, but Pasty needs the original
+    # file paths so multiple copied files keep their names and formats.
+    cf_hdrop = 15
+    windows_library = getattr(ctypes, "WinDLL", None)
+    if windows_library is None:
+        return []
+    user32 = windows_library("user32", use_last_error=True)
+    shell32 = windows_library("shell32", use_last_error=True)
+
+    user32.IsClipboardFormatAvailable.argtypes = [wintypes.UINT]
+    user32.IsClipboardFormatAvailable.restype = wintypes.BOOL
+    user32.OpenClipboard.argtypes = [wintypes.HWND]
+    user32.OpenClipboard.restype = wintypes.BOOL
+    user32.CloseClipboard.argtypes = []
+    user32.CloseClipboard.restype = wintypes.BOOL
+    user32.GetClipboardData.argtypes = [wintypes.UINT]
+    user32.GetClipboardData.restype = wintypes.HANDLE
+    shell32.DragQueryFileW.argtypes = [
+        wintypes.HANDLE,
+        wintypes.UINT,
+        wintypes.LPWSTR,
+        wintypes.UINT,
+    ]
+    shell32.DragQueryFileW.restype = wintypes.UINT
+
+    if not user32.IsClipboardFormatAvailable(cf_hdrop):
+        return []
+    if not user32.OpenClipboard(None):
+        return []
+
+    try:
+        handle = user32.GetClipboardData(cf_hdrop)
+        if not handle:
+            return []
+
+        file_count = shell32.DragQueryFileW(handle, 0xFFFFFFFF, None, 0)
+        paths = []
+        for index in range(file_count):
+            character_count = shell32.DragQueryFileW(handle, index, None, 0)
+            if character_count == 0:
+                continue
+            buffer = ctypes.create_unicode_buffer(character_count + 1)
+            if shell32.DragQueryFileW(handle, index, buffer, character_count + 1):
+                paths.append(Path(buffer.value))
+        return paths
+    finally:
+        user32.CloseClipboard()
+
+
+def macos_clipboard_file_paths() -> list[Path]:
+    osascript = Path("/usr/bin/osascript")
+    if not osascript.exists():
+        return []
+    output = clipboard_command_output(
+        [str(osascript), "-l", "JavaScript", "-e", MACOS_FILE_URL_SCRIPT]
+    )
+    return [Path(line).expanduser() for line in output.splitlines() if line.strip()]
+
+
+def linux_clipboard_file_paths() -> list[Path]:
+    wayland_paths = linux_clipboard_file_paths_with_wl_paste()
+    if wayland_paths:
+        return wayland_paths
+    return linux_clipboard_file_paths_with_xclip()
+
+
+def linux_clipboard_file_paths_with_wl_paste() -> list[Path]:
+    wl_paste = executable_path("wl-paste")
+    if wl_paste is None:
+        return []
+
+    targets = set(clipboard_command_output([wl_paste, "--list-types"]).split())
+    texts = [
+        clipboard_command_output([wl_paste, "--no-newline", "--type", clipboard_type])
+        for clipboard_type in LINUX_FILE_CLIPBOARD_TYPES
+        if clipboard_type in targets
+    ]
+    return image_file_paths_from_clipboard_text("\n".join(texts))
+
+
+def linux_clipboard_file_paths_with_xclip() -> list[Path]:
+    xclip = executable_path("xclip")
+    if xclip is None:
+        return []
+
+    targets = set(
+        clipboard_command_output(
+            [xclip, "-selection", "clipboard", "-target", "TARGETS", "-out"]
+        ).split()
+    )
+    texts = [
+        clipboard_command_output(
+            [xclip, "-selection", "clipboard", "-target", clipboard_type, "-out"]
+        )
+        for clipboard_type in LINUX_FILE_CLIPBOARD_TYPES
+        if clipboard_type in targets
+    ]
+    return image_file_paths_from_clipboard_text("\n".join(texts))
+
+
+def executable_path(name: str) -> str | None:
+    path = shutil.which(name)
+    if path is None:
+        return None
+    executable = Path(path)
+    if not executable.is_absolute():
+        return None
+    return str(executable)
+
+
+def clipboard_command_output(command: Sequence[str]) -> str:
+    try:
+        result = subprocess.run(  # noqa: S603
+            command,
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            stdin=subprocess.DEVNULL,
+            text=True,
+            timeout=CLIPBOARD_COMMAND_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if result.returncode != 0:
+        return ""
+    return result.stdout
 
 
 def load_image_file(filepath: Path) -> bpy.types.Image | None:

@@ -262,7 +262,7 @@ Preferences expose user choices, not internal implementation details.
 
 ## ImagePaste comparison
 
-ImagePaste solved an important problem, but it also handles many file-system tasks: custom folders, filename tokens, move modes, save handlers, and platform clipboard readers.
+ImagePaste solved an important problem, but it also handles many file-system tasks: custom folders, filename tokens, move modes, save handlers, and raw platform image clipboard readers.
 
 Pasty keeps the parts that help the artist:
 
@@ -272,10 +272,12 @@ Pasty keeps the parts that help the artist:
 
 Pasty leaves out the heavier parts:
 
-- platform clipboard readers
+- raw platform image clipboard readers
 - automatic file moving on save
 - broad image migration tools
 - settings that overlap Blender's own file tools
+
+Pasty does read native copied-file lists. That narrow platform support preserves a normal artist action: copy several image files from a file manager, then paste those same files into Blender without losing names, formats, or source paths.
 
 The final preference design follows these rules:
 

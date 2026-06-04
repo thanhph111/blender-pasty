@@ -23,6 +23,7 @@ def run_smoke_checks(module: ModuleType, *, register_addon: bool) -> None:
         check_sequence_strips_can_be_added_for_multiple_images,
         check_clipboard_image_file_paths_can_be_loaded,
         check_blender_relative_clipboard_paths_can_be_loaded,
+        check_platform_clipboard_file_paths_can_be_loaded,
         check_clipboard_poll_failure_falls_back_to_paths,
         check_clipboard_images_can_be_packed,
         check_generated_image_can_be_saved,
@@ -526,11 +527,69 @@ def check_blender_relative_clipboard_paths_can_be_loaded(modules: SimpleNamespac
             raise RuntimeError(msg)
 
 
+def check_platform_clipboard_file_paths_can_be_loaded(modules: SimpleNamespace) -> None:
+    with TemporaryDirectory() as temp_dir:
+        first_filepath = Path(temp_dir) / "pasty platform copied file.png"
+        second_filepath = Path(temp_dir) / "pasty platform second file.PNG"
+        not_image = Path(temp_dir) / "pasty platform notes.txt"
+        save_test_image(first_filepath, "pasty-platform-source", [1.0, 0.5, 0.0, 1.0])
+        save_test_image(second_filepath, "pasty-platform-second-source", [0.5, 0.0, 1.0, 1.0])
+        not_image.write_text("not an image", encoding="utf-8")
+
+        gnome_files_text = (
+            f"copy\r\n# comment\r\n{first_filepath.as_uri()}\r\n"
+            f"{not_image.as_uri()}\r\n{second_filepath.as_uri()}\r\n"
+        )
+        if modules.clipboard.image_file_paths_from_clipboard_text(gnome_files_text) != [
+            first_filepath,
+            second_filepath,
+        ]:
+            msg = "platform-style copied-file text was not parsed as image paths"
+            raise RuntimeError(msg)
+
+        original_platform_file_paths = modules.clipboard.platform_clipboard_file_paths
+        original_clipboard_paste = modules.clipboard.image_clipboard_paste_result
+        fake_context = SimpleNamespace(
+            area=SimpleNamespace(type="VIEW_3D", ui_type="VIEW_3D"),
+            window_manager=SimpleNamespace(clipboard=""),
+        )
+
+        try:
+            modules.clipboard.platform_clipboard_file_paths = lambda: [
+                first_filepath,
+                not_image,
+                second_filepath,
+                first_filepath,
+            ]
+            modules.clipboard.image_clipboard_paste_result = clipboard_paste_poll_failed
+            images = modules.clipboard.paste_images_from_clipboard(fake_context)
+            try:
+                if [image.source_path for image in images] != [first_filepath, second_filepath]:
+                    msg = f"unexpected platform clipboard images: {images}"
+                    raise RuntimeError(msg)
+                if any(
+                    image.image.get("pasty.source_kind") != modules.storage.SOURCE_COPIED_FILE
+                    for image in images
+                ):
+                    msg = "platform copied files were not stamped as copied files"
+                    raise RuntimeError(msg)
+            finally:
+                for image in images:
+                    bpy.data.images.remove(image.image)
+        finally:
+            modules.clipboard.platform_clipboard_file_paths = original_platform_file_paths
+            modules.clipboard.image_clipboard_paste_result = original_clipboard_paste
+
+
 def check_clipboard_poll_failure_falls_back_to_paths(modules: SimpleNamespace) -> None:
     with TemporaryDirectory() as temp_dir:
         filepath = Path(temp_dir) / "pasty fallback path.png"
         save_test_image(filepath, "pasty-fallback-path-source-test", [0.0, 1.0, 1.0, 1.0])
 
+        def no_platform_paths() -> list[Path]:
+            return []
+
+        original_platform_file_paths = modules.clipboard.platform_clipboard_file_paths
         original_clipboard_paste = modules.clipboard.image_clipboard_paste_result
         fake_context = SimpleNamespace(
             area=SimpleNamespace(type="VIEW_3D", ui_type="VIEW_3D"),
@@ -539,6 +598,7 @@ def check_clipboard_poll_failure_falls_back_to_paths(modules: SimpleNamespace) -
 
         try:
             # Simulate Blender's image clipboard poll failure without needing a real GUI clipboard.
+            modules.clipboard.platform_clipboard_file_paths = no_platform_paths
             modules.clipboard.image_clipboard_paste_result = clipboard_paste_poll_failed
             images = modules.clipboard.paste_images_from_clipboard(fake_context)
             try:
@@ -552,6 +612,7 @@ def check_clipboard_poll_failure_falls_back_to_paths(modules: SimpleNamespace) -
                 for image in images:
                     bpy.data.images.remove(image.image)
         finally:
+            modules.clipboard.platform_clipboard_file_paths = original_platform_file_paths
             modules.clipboard.image_clipboard_paste_result = original_clipboard_paste
 
 

@@ -75,12 +75,14 @@ Check these sources:
 - Screenshot copied to the clipboard
 - Image copied from a browser
 - Image copied from an image editor
+- One image file copied from the file manager
+- Several image files copied from the file manager
 - One image file path copied as text
 - Several image file paths copied as text
 - One `file://` URL copied as text
 - Several `file://` URLs copied as text
 
-For path tests, use the fixture images. Copy both plain file paths and `file://` URLs.
+For file and path tests, use the fixture images. Copy them from Finder, Explorer, or the Linux file manager, then also copy both plain file paths and `file://` URLs.
 
 ## Paste targets
 
@@ -94,7 +96,7 @@ For each clipboard source, test these targets:
 Expected behavior:
 
 - A screenshot or browser image copied to the clipboard pastes as one image.
-- Several copied image paths paste as several target items.
+- Several copied image files or image paths paste as several target items.
 - 3D View paste offsets several pasted images so they do not fully overlap.
 - Sequencer strips use the first free channel for their frame range.
 - Sequencer paste creates strips in a row from the current frame.
@@ -135,5 +137,6 @@ When a platform fails, record:
 - Operating system and desktop session, such as macOS, Windows, Linux Wayland, or Linux X11
 - Clipboard source app
 - Pasty target area
+- Whether the clipboard source was copied files, text paths, file URLs, or image pixels
 - Whether Blender's own Image Editor clipboard paste works
 - The warning or error shown by Pasty

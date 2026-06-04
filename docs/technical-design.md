@@ -25,7 +25,7 @@ copied image files
 clipboard image
 ```
 
-Copied files are checked first because they keep names, formats, paths, and multi-file selections.
+Copied files are checked first because they keep names, formats, paths, and multi-file selections. Pasty can find copied files through native file-list formats, plain paths, or `file://` URLs.
 
 If no copied image files are found, Pasty uses Blender's own image clipboard operator:
 
@@ -33,9 +33,17 @@ If no copied image files are found, Pasty uses Blender's own image clipboard ope
 bpy.ops.image.clipboard_paste()
 ```
 
-Pasty does not try to read operating-system image clipboard data itself. It lets Blender do that work.
+Pasty does not try to read operating-system image pixels itself. It lets Blender do that work.
 
-Today, copied file support reads Blender's text clipboard for image file paths and `file://` URLs. Several paths become several pasted images. Future platform-specific copied-file formats can be added only if they stay small and fit the same source order.
+Copied file support has two layers. Pasty reads native copied-file formats where they preserve more information, and also reads Blender's text clipboard for image file paths and `file://` URLs. Several paths become several pasted images.
+
+The platform layer stays file-list-only:
+
+- Windows reads `CF_HDROP`, the standard copied-file list from Explorer.
+- macOS reads pasteboard file URLs from `/usr/bin/osascript` and AppKit.
+- Linux reads `text/uri-list` and `x-special/gnome-copied-files` through `wl-paste` or `xclip` when those tools are installed.
+
+If those readers fail or are not available, Pasty falls back quietly.
 
 This matters because clipboard image handling is different across macOS, Windows, Linux X11, Linux Wayland, screenshots, browsers, Photoshop, ShareX, and copied image files. Rebuilding all of that inside the add-on creates a lot of fragile platform code.
 
@@ -46,7 +54,7 @@ Blender's image clipboard paste operator belongs to the Image Editor. If Pasty n
 ```mermaid
 flowchart TD
     A["User runs a Pasty paste command"] --> B["Pasty remembers the current editor"]
-    B --> C["Pasty checks copied image file paths and file URLs"]
+    B --> C["Pasty checks copied image files, paths, and file URLs"]
     C --> D{"Did Pasty load image files?"}
     D -->|"Yes"| G["Pasty prepares images for the target area"]
     D -->|"No"| E["Pasty switches that area to the Image Editor"]
@@ -179,7 +187,7 @@ It has separate clipboard code for each platform:
 
 That approach made sense before Blender had better built-in image clipboard support, but it creates many moving parts.
 
-Pasty uses copied file paths first, then asks Blender to read the clipboard image. It saves a file only when the target requires a file path or when the user chooses `Save to Folder`.
+Pasty uses copied image files first, then asks Blender to read the clipboard image. It saves a file only when the target requires a file path or when the user chooses `Save to Folder`.
 
 The goal is not to become a bigger ImagePaste. The goal is to be smaller, more native to modern Blender, and less platform-fragile.
 
@@ -195,7 +203,7 @@ These ImagePaste issues show where platform clipboard code and older Blender API
 - Save-handler/operator breakage in Blender 4.5: [#64](https://github.com/b-init/ImagePaste/issues/64)
 - Unclear save folder behavior: [#26](https://github.com/b-init/ImagePaste/issues/26)
 
-Pasty avoids most of this by not owning platform clipboard extraction. Blender owns clipboard image reading. Pasty only decides what to do with the pasted Blender image, or with image file paths exposed through Blender's text clipboard.
+Pasty avoids most of this by not owning platform image extraction. Blender owns clipboard image reading. Pasty only adds a small copied-file reader so file-manager copies can keep their original paths, names, formats, and multi-file selection.
 
 ## What Pasty does not try to do
 
@@ -203,7 +211,7 @@ Pasty intentionally does not try to be a full ImagePaste clone.
 
 It does not support:
 
-- OS-specific file-drop clipboard formats beyond text paths and file URLs
+- raw OS-specific image clipboard extraction
 - moving user-owned files
 - moving all images in a `.blend`
 - save-time file moving
@@ -213,20 +221,21 @@ Those features can be added later, but they should be added only when they fit t
 
 ## Current limits
 
-Pasty depends on Blender's own clipboard support.
+Pasty depends on Blender's own image clipboard support.
 
 That means behavior can differ by platform. Blender's image clipboard support is strongest on Windows, macOS, and Linux Wayland.
 
-Multiple-image paste works for clipboard text that exposes several image paths or file URLs. It does not mean Blender's native image clipboard operator can read several clipboard images at once.
+Multiple-image paste works for copied file lists, clipboard text that exposes several image paths, or several file URLs. It does not mean Blender's native image clipboard operator can read several clipboard images at once.
 
 Linux X11 may be weaker depending on Blender and the desktop environment.
 
-This is still better than shipping our own Linux clipboard stack, because Blender itself is the owner of clipboard support.
+This is still better than shipping our own image clipboard stack, because Blender itself is the owner of clipboard image support.
 
 ## Design rules
 
 - Use Blender's own operators when Blender already owns the behavior.
-- Do not read the operating system clipboard directly unless Blender's own API cannot do the job.
+- Read native copied-file lists only to preserve file paths and multi-file paste.
+- Do not read raw operating-system image data; Blender owns that.
 - Do not switch editor areas inside `poll()`.
 - Treat copied files and copied pixels as different sources.
 - Never move a user-owned file.
@@ -253,6 +262,9 @@ Manual GUI checks should cover copying an image to the clipboard, then pasting a
 
 - [Blender image operators](https://docs.blender.org/api/4.2/bpy.ops.image.html)
 - [Blender extension manifest permissions](https://docs.blender.org/manual/en/4.2/advanced/extensions/getting_started.html)
+- [Microsoft Shell Clipboard Formats](https://learn.microsoft.com/en-us/windows/win32/shell/clipboard)
+- [Apple NSPasteboard](https://developer.apple.com/documentation/AppKit/NSPasteboard)
+- [wl-paste manual](https://man.archlinux.org/man/wl-paste.1.en)
 - [ImagePaste repository](https://github.com/b-init/ImagePaste)
 - [ImagePaste operators](https://github.com/b-init/ImagePaste/blob/main/imagepaste/operators.py)
 - [ImagePaste macOS clipboard code](https://github.com/b-init/ImagePaste/blob/main/imagepaste/clipboard/darwin/darwin.py)

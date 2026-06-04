@@ -17,9 +17,9 @@ It can also copy images back to the clipboard from image reference objects, text
 
 Pasty builds on the older ImagePaste idea for modern Blender.
 
-ImagePaste solved a real problem by reading the operating system clipboard with platform-specific code. Pasty keeps the same spirit, but uses Blender's own image clipboard support instead of shipping a large clipboard backend. That makes the add-on smaller and less fragile across macOS, Windows, Linux X11, Linux Wayland, screenshots, browsers, and image editors.
+ImagePaste solved a real problem by reading the operating system clipboard with platform-specific code. Pasty keeps the same spirit, but keeps the platform layer narrow: it reads copied file lists when the operating system exposes them, then uses Blender's own image clipboard support for screenshots, browsers, and image editors.
 
-Pasty checks Blender's text clipboard for copied image file paths and `file://` URLs first. Several copied paths paste as several images. If no image paths are found, Pasty asks Blender for a screenshot or image copied from a browser or image editor.
+Pasty checks copied image files first, including Finder, Explorer, common Linux file-manager formats, plain paths, and `file://` URLs. Several copied files paste as several images. If no image files are found, Pasty asks Blender for a screenshot or image copied from a browser or image editor.
 
 ## Install
 
