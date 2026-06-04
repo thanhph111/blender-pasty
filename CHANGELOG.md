@@ -8,7 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Read native copied image file lists from Windows, macOS, and common Linux clipboard tools before falling back to Blender image paste.
+- Add Pasty preferences for pasted image storage, generated PNG names, and Sequencer still image length.
+- Add `File > External Data > Gather Pasted Images` to copy Pasty-marked external images into the project folder.
+- Add support for image files copied directly from Finder, Explorer, and common Linux file managers.
+
+### Changed
+
+- Clipboard images pasted into the 3D View and Shader Editor are now packed into the `.blend` by default.
+- Sequencer clipboard images are now saved to `//pasted-images` by default.
+- Copied image files now keep their original file paths by default unless `Copy to Folder` is enabled.
 
 ## [0.1.0] - 2026-06-01
 
