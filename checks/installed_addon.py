@@ -6,10 +6,10 @@ from pathlib import Path
 import addon_utils
 
 # Blender runs this as a file, so Python starts from checks/. Add the repo root
-# before importing the shared smoke checks.
+# before importing the shared add-on behavior checks.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from checks.blender import run_smoke_checks
+from checks.addon_behavior import run_blender_checks
 
 
 def main() -> None:
@@ -18,11 +18,11 @@ def main() -> None:
     is_default_enabled, is_loaded = addon_utils.check(module_name)
     if not is_loaded:
         # install-file --enable normally handles this. Keep the explicit enable so this
-        # smoke test also works after a plain install-file call.
+        # installed add-on check also works after a plain install-file call.
         addon_utils.enable(module_name, default_set=False, persistent=False)
 
     module = importlib.import_module(module_name)
-    run_smoke_checks(module, register_addon=False)
+    run_blender_checks(module, register_addon=False)
 
     if not is_default_enabled:
         addon_utils.disable(module_name, default_set=False)

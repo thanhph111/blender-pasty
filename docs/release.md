@@ -36,6 +36,7 @@ Use these version bumps:
    ```bash
    mise run lint
    mise run test
+   mise run test clipboard all
    mise run test package
    ```
 
@@ -52,9 +53,15 @@ git push origin release/v0.1.0
 
 This starts `Release candidate`. It runs the full matrix:
 
-- Linux on Blender 4.2, 4.5, and current stable
-- Windows on Blender 4.2, 4.5, and current stable
-- macOS Apple Silicon on Blender 4.2, 4.5, and current stable
+- Linux on Blender 4.2, 4.5, and 5.1
+- Windows on Blender 4.2, 4.5, and 5.1
+- macOS Apple Silicon on Blender 4.2, 4.5, and 5.1
+- Live clipboard checks on Linux X11 for Blender 4.2, 4.5, and 5.1
+- Live clipboard checks on Linux Wayland for Blender 4.2 and 5.1
+
+Hosted GitHub runners do not give this repo a dependable real desktop session for Blender clipboard checks on macOS and Windows. Run `mise run test clipboard all` locally on those platforms before a release when you can.
+
+Blender 4.5 is not a hosted Linux Wayland live clipboard gate because Blender exits in headless Sway during image paste before Pasty can write a result. It is still covered by Linux X11 live clipboard checks and the full headless matrix.
 
 The workflow uploads one artifact named `pasty-release-package`. It contains:
 

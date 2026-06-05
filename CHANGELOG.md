@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Add Pasty preferences for pasted image storage, generated PNG names, and Sequencer still image length.
 - Add `File > External Data > Gather Pasted Images` to copy Pasty-marked external images into the project folder.
 - Add support for image files copied directly from Finder, Explorer, and common Linux file managers.
+- Add live clipboard check commands for copied files, image paste, and image copy on macOS, Windows, Linux X11, and Linux Wayland.
 - Add optional Linux `image/png` clipboard fallback through `wl-clipboard` or `xclip` when Blender cannot read the image clipboard itself.
 
 ### Changed

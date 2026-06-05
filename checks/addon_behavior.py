@@ -9,7 +9,7 @@ from types import ModuleType, SimpleNamespace
 import bpy
 
 
-def run_smoke_checks(module: ModuleType, *, register_addon: bool) -> None:
+def run_blender_checks(module: ModuleType, *, register_addon: bool) -> None:
     modules = addon_modules(module)
     checks = (
         check_operator_ids,
@@ -40,8 +40,7 @@ def run_smoke_checks(module: ModuleType, *, register_addon: bool) -> None:
         check(modules)
 
     if register_addon:
-        module.register()
-        module.unregister()
+        check_registration_cycles(module, modules)
 
 
 def addon_modules(module: ModuleType) -> SimpleNamespace:
@@ -81,12 +80,25 @@ def check_operator_ids(modules: SimpleNamespace) -> None:
         raise RuntimeError(msg)
 
 
+def check_registration_cycles(module: ModuleType, modules: SimpleNamespace) -> None:
+    # Blender reloads add-ons during development. Two full cycles catch the common
+    # mistakes: classes that stay registered and shortcuts that are not removed.
+    for _ in range(2):
+        module.register()
+        module.unregister()
+
+    if modules.registration.addon_keymaps:
+        msg = "unregister left Pasty keymaps behind"
+        raise RuntimeError(msg)
+
+
 def load_repo_addon() -> ModuleType:
     addon_dir = Path(__file__).resolve().parents[1]
     addon_path = addon_dir / "__init__.py"
-    # Load the source package directly so smoke tests do not depend on a Blender install step.
+    # Load the source package directly so source add-on checks do not depend on
+    # a Blender install step.
     spec = util.spec_from_file_location(
-        "pasty_smoke", addon_path, submodule_search_locations=[str(addon_dir)]
+        "pasty_check", addon_path, submodule_search_locations=[str(addon_dir)]
     )
     if spec is None or spec.loader is None:
         msg = f"could not load add-on from {addon_path}"

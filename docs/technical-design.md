@@ -250,20 +250,31 @@ This keeps Blender as the owner of normal image clipboard support while Pasty co
 
 ## Testing
 
-Headless tests can check:
+Headless tests check:
 
 - the add-on imports
 - operators are registered
 - operators are unregistered
 - generated images can be saved to disk
-- image file paths and file URLs can be loaded
+- image file paths, `file://` URLs, `text/uri-list`, and GNOME copied-file text can be loaded
 - multiple image file paths create multiple target items
 - gathered images are copied beside the `.blend` without moving user files
 - Linux image/png paste and copy fallback behavior can work with mocked readers and writers
 
-Real clipboard behavior needs a local GUI smoke test, because headless Blender cannot fully prove system clipboard behavior. Hosted GitHub runners do not give us a stable system clipboard.
+Live clipboard tests use a seed and verify split:
 
-Manual GUI checks should cover copying an image to the clipboard, then pasting as a 3D reference, as a 3D plane, into the Sequencer, and into the Shader Editor.
+- `checks/clipboard_os.py` seeds or checks the real OS clipboard.
+- `checks/clipboard_blender.py` runs inside Blender and checks Pasty behavior.
+
+Shared add-on behavior checks live in `checks/addon_behavior.py`. `checks/source_addon.py` runs those checks against the source checkout, and `checks/installed_addon.py` runs the same checks against the installed zip.
+
+The live scenarios are:
+
+- `copied-files`: two fixture files paste as `SOURCE_COPIED_FILE`.
+- `paste-image`: one seeded PNG pastes as `SOURCE_CLIPBOARD_IMAGE`.
+- `copy-image`: Blender copies an image after a real GUI input event, and the OS helper verifies image data on the clipboard while Blender stays open.
+
+The full hosted CI profile runs those live scenarios on Linux X11 across Blender 4.2, 4.5, and 5.1, and on Linux Wayland across Blender 4.2 and 5.1. Blender 4.5 is not a hosted Linux Wayland live clipboard gate because Blender exits in headless Sway during image paste before Pasty can write a result. macOS and Windows still run headless Blender checks in hosted CI. Live clipboard checks on those platforms stay local until the project has real desktop runners.
 
 ## References
 

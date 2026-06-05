@@ -19,7 +19,7 @@ on:
         type: boolean
         default: false
       profile:
-        description: Check depth. Use fast for PRs and full for scheduled/release-candidate runs.
+        description: Check depth. Use fast for normal checks and full for release-candidate runs.
         required: false
         type: string
         default: fast
@@ -48,7 +48,9 @@ jobs:
       - name: Restore mise tool cache
         uses: actions/cache@v5
         with:
-          path: ~/.local/share/mise
+          path: |
+            ~/.local/share/mise
+            ~/AppData/Local/mise
           key: mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.mise/mise.lock') }}
           restore-keys: mise-${{ runner.os }}-${{ runner.arch }}-
 
@@ -59,14 +61,6 @@ jobs:
           key: prek-${{ runner.os }}-${{ hashFiles('prek.toml') }}
           restore-keys: |
             prek-${{ runner.os }}-
-
-      - name: Restore dprint cache
-        uses: actions/cache@v5
-        with:
-          path: ${{ env.DPRINT_CACHE_DIR }}
-          key: dprint-${{ runner.os }}-${{ hashFiles('dprint.jsonc') }}
-          restore-keys: |
-            dprint-${{ runner.os }}-
 
       - name: Restore uv cache
         uses: actions/cache@v5
@@ -90,8 +84,8 @@ jobs:
       - name: Minimize uv cache
         run: mise exec -- uv cache prune --ci
 
-  test:
-    name: Test
+  source-addon:
+    name: Source add-on
     needs: [lint]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -105,7 +99,9 @@ jobs:
       - name: Restore mise tool cache
         uses: actions/cache@v5
         with:
-          path: ~/.local/share/mise
+          path: |
+            ~/.local/share/mise
+            ~/AppData/Local/mise
           key: mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.mise/mise.lock') }}
           restore-keys: mise-${{ runner.os }}-${{ runner.arch }}-
 
@@ -125,50 +121,34 @@ jobs:
       - name: Install dependencies
         run: mise run deps
 
-      - name: Run tests
+      - name: Run source add-on checks
         run: mise run test
 
       - name: Minimize uv cache
         run: mise exec -- uv cache prune --ci
 
-  blender-matrix:
-    name: Plan Blender smoke targets
+  headless-blender-targets:
+    name: Plan headless Blender targets
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - name: Choose Blender smoke targets
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          persist-credentials: false
+
+      - name: Choose headless Blender targets
         id: matrix
-        shell: python
-        run: |
-          import json
-          import os
-          import sys
+        run: >-
+          .github/workflows/scripts/plan_targets.py headless
+          --profile '${{ inputs.profile }}'
 
-          profile = "${{ inputs.profile }}"
-          if profile == "fast":
-              targets = ["Linux, Blender 4.2", "Linux, Blender 5.1"]
-          elif profile == "full":
-              targets = [
-                  f"{platform}, Blender {blender}"
-                  for platform in ("Linux", "Windows", "macOS")
-                  for blender in ("4.2", "4.5", "5.1")
-              ]
-          else:
-              print(f"Unknown profile: {profile}", file=sys.stderr)
-              raise SystemExit(1)
-
-          # GitHub's sidebar can collapse matrix rows down to one matrix value.
-          # Keep that value fully descriptive so repeated 4.2/4.5/5.1 rows stay readable.
-          matrix = {"include": [{"target": target} for target in targets]}
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
-
-  blender:
+  headless-blender:
     name: ${{ matrix.target }}
-    needs: [test, blender-matrix]
+    needs: [source-addon, headless-blender-targets]
     runs-on: ${{ startsWith(matrix.target, 'Linux,') && 'ubuntu-24.04' || startsWith(matrix.target, 'Windows,') && 'windows-2025' || 'macos-15' }}
     timeout-minutes: 30
     permissions:
@@ -176,7 +156,7 @@ jobs:
       contents: read
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.blender-matrix.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.headless-blender-targets.outputs.matrix) }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -187,7 +167,9 @@ jobs:
       - name: Restore mise tool cache
         uses: actions/cache@v5
         with:
-          path: ~/.local/share/mise
+          path: |
+            ~/.local/share/mise
+            ~/AppData/Local/mise
           key: mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.mise/mise.lock') }}
           restore-keys: mise-${{ runner.os }}-${{ runner.arch }}-
 
@@ -249,12 +231,126 @@ jobs:
       - name: Print Blender version
         run: mise run blender run -- --version
 
-      - name: Run headless smoke test
-        run: mise run blender run -- --background --factory-startup --python-exit-code 1 --python checks/smoke_repo.py
+      - name: Run headless Blender checks
+        run: mise run blender run -- --background --factory-startup --python-exit-code 1 --python checks/source_addon.py
 
-  package:
-    name: Package artifact
-    needs: [test, blender]
+  live-clipboard-targets:
+    name: Plan live clipboard targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          persist-credentials: false
+
+      - name: Choose live clipboard targets
+        id: matrix
+        run: >-
+          .github/workflows/scripts/plan_targets.py clipboard
+          --profile '${{ inputs.profile }}'
+
+  live-clipboard:
+    name: ${{ matrix.label }}
+    needs: [source-addon, live-clipboard-targets]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      actions: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.live-clipboard-targets.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          persist-credentials: false
+
+      - name: Restore mise tool cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.local/share/mise
+            ~/AppData/Local/mise
+          key: mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.mise/mise.lock') }}
+          restore-keys: mise-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Set up mise
+        uses: jdx/mise-action@v4
+        with:
+          cache: false
+
+      - name: Restore Blender cache
+        id: blender_cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .cache/blender
+          key: blender-${{ matrix.cache_key }}-${{ runner.arch }}
+
+      - name: Install Blender
+        id: install_blender
+        run: mise run blender install ${{ matrix.blender }}
+
+      - name: Delete stale Blender cache
+        if: ${{ github.event_name != 'pull_request' && steps.blender_cache.outputs.cache-hit == 'true' && steps.install_blender.outputs.cache_updated == 'true' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BLENDER_CACHE_KEY: blender-${{ matrix.cache_key }}-${{ runner.arch }}
+        run: gh cache delete "$BLENDER_CACHE_KEY" || true
+
+      - name: Save Blender cache
+        if: ${{ github.event_name != 'pull_request' && (steps.blender_cache.outputs.cache-hit != 'true' || steps.install_blender.outputs.cache_updated == 'true') }}
+        continue-on-error: true
+        uses: actions/cache/save@v5
+        with:
+          path: .cache/blender
+          key: blender-${{ matrix.cache_key }}-${{ runner.arch }}
+
+      - name: Install Linux X11 clipboard tools
+        if: matrix.session == 'linux-x11'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth xclip libegl1
+
+      - name: Install Linux Wayland clipboard tools
+        if: matrix.session == 'linux-wayland'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            dbus-x11 \
+            kmod \
+            libdecor-0-0 \
+            libegl-mesa0 \
+            libegl1 \
+            libgl1-mesa-dri \
+            libgles2 \
+            libwayland-egl1 \
+            mesa-utils \
+            mesa-utils-extra \
+            sway \
+            wl-clipboard \
+            wtype \
+            ydotool \
+            ydotoold
+
+      - name: Run Linux X11 clipboard check
+        if: matrix.session == 'linux-x11'
+        run: .github/workflows/scripts/run_linux_x11_clipboard.sh
+
+      - name: Run Linux Wayland clipboard check
+        if: matrix.session == 'linux-wayland'
+        run: .github/workflows/scripts/run_linux_wayland_clipboard.sh
+
+  installed-addon:
+    name: Installed add-on
+    needs: [source-addon, headless-blender, live-clipboard]
+    if: ${{ !cancelled() && !failure() && (needs.live-clipboard.result == 'success' || needs.live-clipboard.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -267,7 +363,9 @@ jobs:
       - name: Restore mise tool cache
         uses: actions/cache@v5
         with:
-          path: ~/.local/share/mise
+          path: |
+            ~/.local/share/mise
+            ~/AppData/Local/mise
           key: mise-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.mise/mise.lock') }}
           restore-keys: mise-${{ runner.os }}-${{ runner.arch }}-
 
@@ -296,7 +394,7 @@ jobs:
       - name: Install Blender
         run: mise run blender install 5.1
 
-      - name: Build and smoke test package
+      - name: Build and check installed add-on
         run: mise run test package
 
       - name: Create SHA256 checksum

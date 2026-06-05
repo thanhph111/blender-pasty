@@ -1,9 +1,9 @@
 import importlib
 from typing import Any
 
-# Blender installs this package under bl_ext.<repo>.pasty, while smoke tests load
-# it as pasty_smoke. Build child imports from the runtime package name so both
-# paths use the same entry point.
+# Blender installs this package under bl_ext.<repo>.pasty. Source add-on checks
+# load it as pasty_check. Build child imports from the runtime package name so
+# both paths use the same entry point.
 package_name = __package__ or __name__
 
 blender_types = importlib.import_module(f"{package_name}.addon.blender_types")

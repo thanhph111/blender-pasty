@@ -1,1 +1,1 @@
-"""Blender smoke check helpers."""
+"""Custom check helpers for Pasty."""
