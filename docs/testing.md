@@ -120,7 +120,7 @@ They are intentionally small so they can stay in the repo and be copied around f
 
 ## CI profiles
 
-The fast profile runs on pull requests. It keeps feedback short:
+The fast profile runs on pull requests and pushes to `main`. It keeps feedback short:
 
 - lint
 - source add-on checks
@@ -128,7 +128,7 @@ The fast profile runs on pull requests. It keeps feedback short:
 - fast headless Blender matrix
 - one Linux X11 live clipboard check on Blender 5.1
 
-The full profile runs for release candidates and scheduled checks. It adds the live clipboard matrix:
+The full profile runs for release candidates. It adds the live clipboard matrix:
 
 - Linux X11 on Blender 4.2, 4.5, and 5.1
 - Linux Wayland on Blender 4.2 and 5.1

@@ -4,24 +4,6 @@ on:
   push:
     branches: ['release/**']
   workflow_dispatch:
-    inputs:
-      scope:
-        description: Which expensive checks to run
-        required: false
-        default: all
-        type: choice
-        options:
-          - all
-          - headless
-          - clipboard
-      headless_target:
-        description: Optional headless target filter, such as Linux, Blender 4.2
-        required: false
-        type: string
-      clipboard_target:
-        description: Optional live clipboard target filter, such as Linux Wayland clipboard
-        required: false
-        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -42,6 +24,3 @@ jobs:
       checkout_ref: ${{ github.sha }}
       create_checksum: true
       profile: full
-      scope: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || 'all' }}
-      headless_target: ${{ github.event_name == 'workflow_dispatch' && inputs.headless_target || '' }}
-      clipboard_target: ${{ github.event_name == 'workflow_dispatch' && inputs.clipboard_target || '' }}

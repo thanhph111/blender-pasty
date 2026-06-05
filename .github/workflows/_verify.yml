@@ -19,25 +19,10 @@ on:
         type: boolean
         default: false
       profile:
-        description: Check depth. Use fast for PRs and full for scheduled/release-candidate runs.
+        description: Check depth. Use fast for normal checks and full for release-candidate runs.
         required: false
         type: string
         default: fast
-      scope:
-        description: Which expensive checks to run. Use all for normal CI.
-        required: false
-        type: string
-        default: all
-      headless_target:
-        description: Optional headless target filter, such as Linux, Blender 4.2
-        required: false
-        type: string
-        default: ''
-      clipboard_target:
-        description: Optional live clipboard target filter, such as Linux Wayland clipboard
-        required: false
-        type: string
-        default: ''
 
 env:
   # Keep Blender, dprint, and uv state inside the workspace so automated checks are repeatable.
@@ -144,51 +129,26 @@ jobs:
 
   headless-blender-targets:
     name: Plan headless Blender targets
-    if: inputs.scope == 'all' || inputs.scope == 'headless'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          persist-credentials: false
+
       - name: Choose headless Blender targets
         id: matrix
-        shell: python
-        run: |
-          import json
-          import os
-          import sys
-
-          profile = "${{ inputs.profile }}"
-          if profile == "fast":
-              targets = ["Linux, Blender 4.2", "Linux, Blender 5.1"]
-          elif profile == "full":
-              targets = [
-                  f"{platform}, Blender {blender}"
-                  for platform in ("Linux", "Windows", "macOS")
-                  for blender in ("4.2", "4.5", "5.1")
-              ]
-          else:
-              print(f"Unknown profile: {profile}", file=sys.stderr)
-              raise SystemExit(1)
-
-          target_filter = "${{ inputs.headless_target }}".strip().lower()
-          if target_filter:
-              targets = [target for target in targets if target_filter in target.lower()]
-              if not targets:
-                  print(f"No headless Blender target matched: {target_filter}", file=sys.stderr)
-                  raise SystemExit(1)
-
-          # GitHub's sidebar can collapse matrix rows down to one matrix value.
-          # Keep that value fully descriptive so repeated 4.2/4.5/5.1 rows stay readable.
-          matrix = {"include": [{"target": target} for target in targets]}
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
+        run: >-
+          .github/workflows/scripts/plan_targets.py headless
+          --profile '${{ inputs.profile }}'
 
   headless-blender:
     name: ${{ matrix.target }}
     needs: [source-addon, headless-blender-targets]
-    if: inputs.scope == 'all' || inputs.scope == 'headless'
     runs-on: ${{ startsWith(matrix.target, 'Linux,') && 'ubuntu-24.04' || startsWith(matrix.target, 'Windows,') && 'windows-2025' || 'macos-15' }}
     timeout-minutes: 30
     permissions:
@@ -276,73 +236,26 @@ jobs:
 
   live-clipboard-targets:
     name: Plan live clipboard targets
-    if: inputs.scope == 'all' || inputs.scope == 'clipboard'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          persist-credentials: false
+
       - name: Choose live clipboard targets
         id: matrix
-        shell: python
-        run: |
-          import json
-          import os
-          import sys
-
-          profile = "${{ inputs.profile }}"
-          sessions = [
-              ("Linux X11 clipboard", "ubuntu-24.04", "linux-x11", "linux"),
-              ("Linux Wayland clipboard", "ubuntu-24.04", "linux-wayland", "linux"),
-          ]
-
-          if profile == "fast":
-              targets = [("Linux X11 clipboard", "ubuntu-24.04", "linux-x11", "linux", "5.1")]
-          elif profile == "full":
-              targets = []
-              for session in sessions:
-                  blenders = ("4.2", "4.5", "5.1")
-                  if session[2] == "linux-wayland":
-                      # Blender 4.5 exits in hosted headless Sway during image
-                      # paste before Pasty can write a result. Keep 4.5 covered
-                      # by X11 live checks and headless Wayland-free checks.
-                      blenders = ("4.2", "5.1")
-                  targets.extend((*session, blender) for blender in blenders)
-          else:
-              print(f"Unknown profile: {profile}", file=sys.stderr)
-              raise SystemExit(1)
-
-          target_filter = "${{ inputs.clipboard_target }}".strip().lower()
-          if target_filter:
-              targets = [
-                  target
-                  for target in targets
-                  if target_filter in f"{target[0]}, Blender {target[4]}".lower()
-              ]
-              if not targets:
-                  print(f"No live clipboard target matched: {target_filter}", file=sys.stderr)
-                  raise SystemExit(1)
-
-          matrix = {
-              "include": [
-                  {
-                      "label": f"{label}, Blender {blender}",
-                      "runner": runner,
-                      "session": session,
-                      "blender": blender,
-                      "cache_key": f"{cache_prefix}-blender-{blender}",
-                  }
-                  for label, runner, session, cache_prefix, blender in targets
-              ]
-          }
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
+        run: >-
+          .github/workflows/scripts/plan_targets.py clipboard
+          --profile '${{ inputs.profile }}'
 
   live-clipboard:
     name: ${{ matrix.label }}
     needs: [source-addon, live-clipboard-targets]
-    if: inputs.scope == 'all' || inputs.scope == 'clipboard'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
@@ -428,118 +341,16 @@ jobs:
 
       - name: Run Linux X11 clipboard check
         if: matrix.session == 'linux-x11'
-        shell: bash
-        run: |
-          export DISPLAY=:99
-          Xvfb "$DISPLAY" -screen 0 1280x1024x24 -nolisten tcp > "$RUNNER_TEMP/xvfb.log" 2>&1 &
-          xvfb_pid="$!"
-          trap 'kill "$xvfb_pid" 2>/dev/null || true' EXIT
-          for _ in {1..30}; do
-            if [ -S /tmp/.X11-unix/X99 ]; then
-              break
-            fi
-            sleep 0.2
-          done
-          timeout 25m mise run test clipboard all
+        run: .github/workflows/scripts/run_linux_x11_clipboard.sh
 
       - name: Run Linux Wayland clipboard check
         if: matrix.session == 'linux-wayland'
-        shell: bash
-        run: |
-          export XDG_RUNTIME_DIR="$RUNNER_TEMP/wayland-runtime"
-          mkdir -p "$XDG_RUNTIME_DIR"
-          chmod 700 "$XDG_RUNTIME_DIR"
-          export WAYLAND_DISPLAY=wayland-1
-          export WLR_BACKENDS=headless,libinput
-          export WLR_LIBINPUT_NO_DEVICES=1
-          export WLR_RENDERER=pixman
-          export LIBSEAT_BACKEND=noop
-          export XDG_CURRENT_DESKTOP=sway
-          export LIBGL_ALWAYS_SOFTWARE=1
-          export GALLIUM_DRIVER=llvmpipe
-          export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
-          export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
-          cat > "$RUNNER_TEMP/sway.config" <<'EOF'
-          xwayland disable
-          output HEADLESS-1 resolution 1280x1024 position 0,0
-          seat seat0 xcursor_theme Adwaita 24
-          default_border none
-          EOF
-          sway_pid=""
-          ydotoold_pid=""
-          dump_logs_and_stop() {
-            status="$?"
-            if [ "$status" -ne 0 ]; then
-              for log in "$RUNNER_TEMP/sway.log" "$RUNNER_TEMP/ydotoold.log" "$RUNNER_TEMP/eglinfo.log"; do
-                if [ -f "$log" ]; then
-                  echo "::group::$(basename "$log")"
-                  cat "$log"
-                  echo "::endgroup::"
-                fi
-              done
-            fi
-            if [ -n "$ydotoold_pid" ]; then
-              sudo kill "$ydotoold_pid" 2>/dev/null || true
-            fi
-            if [ -n "$sway_pid" ]; then
-              kill "$sway_pid" 2>/dev/null || true
-            fi
-          }
-          trap dump_logs_and_stop EXIT
-          sudo modprobe uinput || true
-          if [ -e /dev/uinput ]; then
-            sudo chmod 666 /dev/uinput
-            export YDOTOOL_SOCKET=/tmp/.ydotool_socket
-            sudo rm -f "$YDOTOOL_SOCKET"
-            sudo sh -c 'exec ydotoold > "$1" 2>&1' sh "$RUNNER_TEMP/ydotoold.log" &
-            ydotoold_pid="$!"
-            for _ in {1..30}; do
-              if [ -S "$YDOTOOL_SOCKET" ]; then
-                sudo chmod 666 "$YDOTOOL_SOCKET"
-                sudo chmod -R a+rw /dev/input /dev/uinput 2>/dev/null || true
-                break
-              fi
-              sleep 0.2
-            done
-          else
-            echo "/dev/uinput is not available; continuing with Wayland virtual-keyboard input only."
-          fi
-          sway -c "$RUNNER_TEMP/sway.config" -d > "$RUNNER_TEMP/sway.log" 2>&1 &
-          sway_pid="$!"
-          for _ in {1..30}; do
-            if [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
-              break
-            fi
-            sleep 1
-          done
-          if [ ! -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
-            cat "$RUNNER_TEMP/sway.log"
-            exit 1
-          fi
-          swaysock=""
-          for _ in {1..30}; do
-            swaysock="$(find "$XDG_RUNTIME_DIR" -maxdepth 1 -type s -name 'sway-ipc*.sock' -print -quit || true)"
-            if [ -n "$swaysock" ]; then
-              break
-            fi
-            sleep 0.2
-          done
-          if [ -n "$swaysock" ]; then
-            export SWAYSOCK="$swaysock"
-            swaymsg -t get_outputs || true
-            swaymsg -t get_seats || true
-          else
-            echo "Sway IPC socket is not available; continuing with the Wayland clipboard check."
-          fi
-          printf 'pasty-wayland-check' | wl-copy --type text/plain
-          test "$(wl-paste --no-newline --type text/plain)" = 'pasty-wayland-check'
-          eglinfo --wayland > "$RUNNER_TEMP/eglinfo.log" 2>&1 || true
-          mise run test clipboard all
+        run: .github/workflows/scripts/run_linux_wayland_clipboard.sh
 
   installed-addon:
     name: Installed add-on
     needs: [source-addon, headless-blender, live-clipboard]
-    if: ${{ inputs.scope == 'all' && !cancelled() && !failure() && (needs.live-clipboard.result == 'success' || needs.live-clipboard.result == 'skipped') }}
+    if: ${{ !cancelled() && !failure() && (needs.live-clipboard.result == 'success' || needs.live-clipboard.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
