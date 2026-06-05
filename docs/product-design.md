@@ -128,7 +128,7 @@ If the `.blend` is unsaved, Pasty saves those files to Blender's temporary folde
 Unsaved .blend: pasted images were saved to Blender's temporary folder. Save the file, then run Gather Pasted Images.
 ```
 
-### Gather Pasted Images
+### Gather pasted images
 
 `Gather Pasted Images` is the explicit project cleanup command.
 
@@ -149,31 +149,25 @@ The panel uses Blender's existing add-on frame. Inside that frame, use plain sec
 
 Storage:
 
-- `Copied Image Files`
-  - visible two-choice row, not a dropdown menu
-  - `Use Originals`
-  - `Copy to Folder`
-- `Clipboard Images`
-  - visible two-choice row, not a dropdown menu
-  - `Pack into .blend`
-  - `Save to Folder`
-- `Pasted Images Folder`
-  - default: `pasted-images`
-  - folder beside the `.blend` file
+| Setting                | Control                 | Choices or default                   |
+| ---------------------- | ----------------------- | ------------------------------------ |
+| `Copied Image Files`   | side-by-side choice row | `Use Originals`, `Copy to Folder`    |
+| `Clipboard Images`     | side-by-side choice row | `Pack into .blend`, `Save to Folder` |
+| `Pasted Images Folder` | text field              | `pasted-images`                      |
 
 Naming:
 
-- `Generated File Name`
-  - default: `pasted-{date}-{time}-{number}`
-  - visible fixed suffix: `.png`
-  - preview: `pasted-20260603-143522-001.png`
-  - settings panel shows only the field and preview
-  - keep the full token table in README and the product design doc
+| Setting               | Control    | Default                         |
+| --------------------- | ---------- | ------------------------------- |
+| `Generated File Name` | text field | `pasted-{date}-{time}-{number}` |
+
+Keep token help outside the compact preferences panel. The panel shows the field and a short preview; user docs carry the full token reference.
 
 Sequencer:
 
-- `Still Image Length (Frames)`
-  - default: `50 frames`
+| Setting                       | Control      | Default     |
+| ----------------------------- | ------------ | ----------- |
+| `Still Image Length (Frames)` | number field | `50 frames` |
 
 ## Default choices
 
@@ -207,6 +201,7 @@ Out of scope:
 - a move-all-images option
 - a save-time move handler
 - clipboard backend choices
+- clipboard tool path settings
 - debug message toggles
 - a full asset-manager panel
 
