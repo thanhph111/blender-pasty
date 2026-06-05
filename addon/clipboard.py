@@ -64,6 +64,7 @@ const options = $.NSDictionary.dictionaryWithObjectForKey(
 );
 const urls = pasteboard.readObjectsForClassesOptions(classes, options);
 const paths = [];
+const legacyFilePaths = [];
 
 if (urls) {
   for (let index = 0; index < urls.count; index++) {
@@ -74,7 +75,15 @@ if (urls) {
   }
 }
 
-paths.join("\\n");
+const legacyPaths = pasteboard.propertyListForType("NSFilenamesPboardType");
+if (legacyPaths) {
+  // Some AppKit reads return fewer modern URLs than this durable file list.
+  for (let index = 0; index < legacyPaths.count; index++) {
+    legacyFilePaths.push(ObjC.unwrap(legacyPaths.objectAtIndex(index)));
+  }
+}
+
+(legacyFilePaths.length > paths.length ? legacyFilePaths : paths).join("\\n");
 """
 
 
