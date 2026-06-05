@@ -26,6 +26,10 @@ If the clipboard contains image files, Pasty should use those files first. Files
 
 If the clipboard contains pixels from a screenshot, browser, or image editor, Pasty should treat that as a new pasted image.
 
+Blender should read those pixels first. Pasty adds platform image readers only where Blender leaves a known gap. Today that means a Linux `image/png` reader through `wl-clipboard` or `xclip` after Blender fails.
+
+Successful Linux fallback should stay quiet. If fallback is needed but the tool is missing, Pasty should show a short install hint. Standard desktop clipboard tools are found through `PATH`, so the preferences stay focused on storage and naming.
+
 ### Use Blender's own model
 
 Blender already has clear ideas for image ownership:
@@ -45,7 +49,7 @@ Avoid overlapping controls where two settings can fight each other. Expose a set
 
 ### Prefer defaults that work for most artists
 
-Most users should never open Pasty preferences.
+Most users should not need to open Pasty preferences.
 
 The defaults should cover common work:
 
@@ -81,7 +85,7 @@ Avoid words like:
 
 - project-local
 - migration
-- raw image
+- clipboard pixels
 - data-block
 - sync
 - manage assets
@@ -262,27 +266,28 @@ Preferences expose user choices, not internal implementation details.
 
 ## ImagePaste comparison
 
-ImagePaste solved an important problem, but it also handles many file-system tasks: custom folders, filename tokens, move modes, save handlers, and raw platform image clipboard readers.
+ImagePaste solved an important problem, but it also handles many file-system tasks: custom folders, filename tokens, move modes, save handlers, and broad platform image clipboard readers.
 
 Pasty keeps the parts that help the artist:
 
-- visible two-choice controls
+- side-by-side storage choices
 - a filename pattern with a fixed `.png` suffix
 - a clear token table in user docs
 
 Pasty leaves out the heavier parts:
 
-- raw platform image clipboard readers
+- bundled platform clipboard binaries
+- broad platform image clipboard readers
 - automatic file moving on save
 - broad image migration tools
 - settings that overlap Blender's own file tools
 
-Pasty does read native copied-file lists. That narrow platform support preserves a normal artist action: copy several image files from a file manager, then paste those same files into Blender without losing names, formats, or source paths.
+Pasty does read native copied-file lists. It also has a narrow Linux `image/png` fallback through optional desktop tools. Those small platform pieces preserve normal artist actions: copy several image files from a file manager, or copy a screenshot/browser image on Linux X11, then paste into Blender without extra setup in Pasty.
 
-The final preference design follows these rules:
+Preference layout rules:
 
-- show two-choice settings as two visible buttons
-- keep helper text aligned under the control it explains
-- keep the full token reference in user docs
+- Use side-by-side controls for storage choices.
+- Keep helper text aligned with the control it explains.
+- Keep the full token reference in user docs.
 
 The defaults carry the common workflow. Preferences are for artists whose workflow needs different storage or naming.

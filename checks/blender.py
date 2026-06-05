@@ -25,6 +25,10 @@ def run_smoke_checks(module: ModuleType, *, register_addon: bool) -> None:
         check_blender_relative_clipboard_paths_can_be_loaded,
         check_platform_clipboard_file_paths_can_be_loaded,
         check_clipboard_poll_failure_falls_back_to_paths,
+        check_linux_clipboard_tool_hint_is_shown_when_needed,
+        check_linux_clipboard_tools_follow_session,
+        check_linux_clipboard_image_fallback_can_be_loaded,
+        check_linux_clipboard_copy_fallback_writes_png,
         check_clipboard_images_can_be_packed,
         check_generated_image_can_be_saved,
         check_generated_filenames_follow_preferences,
@@ -618,6 +622,119 @@ def check_clipboard_poll_failure_falls_back_to_paths(modules: SimpleNamespace) -
 
 def clipboard_paste_poll_failed() -> None:
     return None
+
+
+def check_linux_clipboard_image_fallback_can_be_loaded(modules: SimpleNamespace) -> None:
+    fixture = Path(__file__).resolve().parent / "fixtures" / "images" / "red.png"
+    original_platform = modules.clipboard.sys.platform
+    original_png_bytes = modules.clipboard.linux_clipboard_png_bytes
+    try:
+        modules.clipboard.sys.platform = "linux"
+        modules.clipboard.linux_clipboard_png_bytes = fixture.read_bytes
+        pasted_image = modules.clipboard.paste_linux_image_data_from_clipboard()
+        if pasted_image is None:
+            msg = "Linux clipboard image fallback did not load an image"
+            raise RuntimeError(msg)
+        try:
+            if pasted_image.source_kind != modules.storage.SOURCE_CLIPBOARD_IMAGE:
+                msg = f"unexpected Linux fallback source: {pasted_image.source_kind}"
+                raise RuntimeError(msg)
+            if pasted_image.image.packed_file is None:
+                msg = "Linux fallback image was not packed before deleting its temp file"
+                raise RuntimeError(msg)
+            if pasted_image.image.filepath or pasted_image.image.filepath_raw:
+                msg = "Linux fallback image kept a temporary filepath"
+                raise RuntimeError(msg)
+        finally:
+            bpy.data.images.remove(pasted_image.image)
+    finally:
+        modules.clipboard.sys.platform = original_platform
+        modules.clipboard.linux_clipboard_png_bytes = original_png_bytes
+
+
+def check_linux_clipboard_tool_hint_is_shown_when_needed(modules: SimpleNamespace) -> None:
+    original_platform = modules.clipboard.sys.platform
+    original_reader_available = modules.clipboard.linux_png_reader_available
+    original_writer_available = modules.clipboard.linux_png_writer_available
+    try:
+        modules.clipboard.sys.platform = "linux"
+        modules.clipboard.linux_png_reader_available = lambda: False
+        modules.clipboard.linux_png_writer_available = lambda: False
+        if "install wl-clipboard" not in modules.clipboard.paste_failure_message():
+            msg = "Linux paste failure did not explain the optional clipboard tools"
+            raise RuntimeError(msg)
+        if "install wl-clipboard" not in modules.clipboard.copy_failure_message():
+            msg = "Linux copy failure did not explain the optional clipboard tools"
+            raise RuntimeError(msg)
+    finally:
+        modules.clipboard.sys.platform = original_platform
+        modules.clipboard.linux_png_reader_available = original_reader_available
+        modules.clipboard.linux_png_writer_available = original_writer_available
+
+
+def check_linux_clipboard_tools_follow_session(modules: SimpleNamespace) -> None:
+    original_environ = dict(modules.clipboard.os.environ)
+    original_executable_path = modules.clipboard.executable_path
+    original_wl_png = modules.clipboard.linux_clipboard_png_bytes_with_wl_paste
+    original_xclip_png = modules.clipboard.linux_clipboard_png_bytes_with_xclip
+
+    def fake_executable_path(name: str) -> str | None:
+        return f"/usr/bin/{name}" if name == "xclip" else None
+
+    try:
+        modules.clipboard.executable_path = fake_executable_path
+        modules.clipboard.linux_clipboard_png_bytes_with_wl_paste = lambda: b""
+        modules.clipboard.linux_clipboard_png_bytes_with_xclip = lambda: b"x11-png"
+
+        modules.clipboard.os.environ.clear()
+        modules.clipboard.os.environ.update({"WAYLAND_DISPLAY": "wayland-1", "DISPLAY": ":99"})
+        if modules.clipboard.linux_png_reader_available():
+            msg = "Wayland reader availability fell through to xclip"
+            raise RuntimeError(msg)
+        if modules.clipboard.linux_clipboard_png_bytes():
+            msg = "Wayland PNG reader fell through to xclip"
+            raise RuntimeError(msg)
+
+        modules.clipboard.os.environ.clear()
+        modules.clipboard.os.environ.update({"DISPLAY": ":99"})
+        if not modules.clipboard.linux_png_reader_available():
+            msg = "X11 reader availability did not use xclip"
+            raise RuntimeError(msg)
+        if modules.clipboard.linux_clipboard_png_bytes() != b"x11-png":
+            msg = "X11 PNG reader did not use xclip"
+            raise RuntimeError(msg)
+    finally:
+        modules.clipboard.os.environ.clear()
+        modules.clipboard.os.environ.update(original_environ)
+        modules.clipboard.executable_path = original_executable_path
+        modules.clipboard.linux_clipboard_png_bytes_with_wl_paste = original_wl_png
+        modules.clipboard.linux_clipboard_png_bytes_with_xclip = original_xclip_png
+
+
+def check_linux_clipboard_copy_fallback_writes_png(modules: SimpleNamespace) -> None:
+    image = bpy.data.images.new("pasty-linux-copy-fallback", 2, 2)
+    original_platform = modules.clipboard.sys.platform
+    original_copy_png = modules.clipboard.copy_png_bytes_to_linux_clipboard
+    captured = []
+
+    def capture_png(png: bytes) -> bool:
+        captured.append(png)
+        return True
+
+    try:
+        image.pixels.foreach_set([1.0, 0.0, 0.0, 1.0] * 4)
+        modules.clipboard.sys.platform = "linux"
+        modules.clipboard.copy_png_bytes_to_linux_clipboard = capture_png
+        if not modules.clipboard.copy_image_to_clipboard(SimpleNamespace(area=None), image):
+            msg = "Linux copy fallback did not report success"
+            raise RuntimeError(msg)
+        if len(captured) != 1 or not captured[0].startswith(b"\x89PNG"):
+            msg = "Linux copy fallback did not write PNG bytes"
+            raise RuntimeError(msg)
+    finally:
+        modules.clipboard.sys.platform = original_platform
+        modules.clipboard.copy_png_bytes_to_linux_clipboard = original_copy_png
+        bpy.data.images.remove(image)
 
 
 def check_clipboard_images_can_be_packed(modules: SimpleNamespace) -> None:

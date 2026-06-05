@@ -17,9 +17,9 @@ It can also copy images back to the clipboard from image reference objects, text
 
 Pasty builds on the older ImagePaste idea for modern Blender.
 
-ImagePaste solved a real problem by reading the operating system clipboard with platform-specific code. Pasty keeps the same spirit, but keeps the platform layer narrow: it reads copied file lists when the operating system exposes them, then uses Blender's own image clipboard support for screenshots, browsers, and image editors.
+ImagePaste solved a real problem by reading the operating system clipboard with platform-specific code. Pasty keeps the same spirit, but keeps the platform layer narrow: it reads copied file lists when the operating system exposes them, then uses Blender's own image clipboard support for screenshots, browsers, and image editors. On Linux, where X11 does not provide Blender-native image clipboard support, Pasty can use standard clipboard tools as a final fallback.
 
-Pasty checks copied image files first, including Finder, Explorer, common Linux file-manager formats, plain paths, and `file://` URLs. Several copied files paste as several images. If no image files are found, Pasty asks Blender for a screenshot or image copied from a browser or image editor.
+Pasty checks copied image files first, including Finder, Explorer, common Linux file-manager formats, plain paths, and `file://` URLs. Several copied files paste as several images. If no image files are found, Pasty asks Blender for a screenshot or image copied from a browser or image editor. On Linux, Pasty can also read or write `image/png` through `wl-clipboard` or `xclip` when Blender cannot handle that clipboard image itself.
 
 ## Install
 
@@ -161,9 +161,14 @@ pasted-20260603-143522-001-002.png
 
 ## Notes
 
-Clipboard support can vary by operating system and source app. If a screenshot or copied browser image does not paste, check whether Blender's own Image Editor paste works first.
+Clipboard support can vary by operating system, Blender version, and source app. Pasty asks Blender to paste clipboard images first. On Linux, it can use a narrow `image/png` fallback when Blender cannot paste the clipboard image itself.
 
-Linux users should test the same workflow on their actual desktop session. Wayland and X11 can behave differently.
+Linux users should install one small clipboard tool for the best screenshot and browser-image support, especially on X11:
+
+- Wayland: `wl-clipboard`
+- X11: `xclip`
+
+Pasty does not bundle those tools and does not need a path setting. It looks for the standard tool on `PATH`. Without it, copied image files and text paths can still work, and Pasty shows an install hint if clipboard image paste needs the Linux fallback.
 
 ## Development
 

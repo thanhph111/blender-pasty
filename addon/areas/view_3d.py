@@ -5,6 +5,7 @@ import bpy
 from ..blender_types import OperatorReturn
 from ..clipboard import (
     copy_failed,
+    copy_failure_message,
     copy_image_to_clipboard,
     paste_failed,
     paste_images_from_clipboard,
@@ -44,7 +45,7 @@ class PASTY_OT_view3d_copy_image(bpy.types.Operator):
         if image is None:
             return copy_failed(self)
         if not copy_image_to_clipboard(context, image):
-            self.report({"ERROR"}, "Could not copy image to the clipboard")
+            self.report({"ERROR"}, copy_failure_message())
             return {"CANCELLED"}
         return {"FINISHED"}
 

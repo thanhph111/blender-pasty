@@ -1,4 +1,5 @@
 import ctypes
+import os
 import shutil
 import subprocess
 import sys
@@ -7,6 +8,7 @@ from contextlib import contextmanager
 from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from urllib.parse import unquote, urlparse
 
 import bpy
@@ -47,6 +49,10 @@ DEFAULT_IMAGE_FILE_EXTENSIONS = frozenset(
 )
 CLIPBOARD_COMMAND_TIMEOUT_SECONDS = 2
 LINUX_FILE_CLIPBOARD_TYPES = ("x-special/gnome-copied-files", "text/uri-list")
+LINUX_CLIPBOARD_TOOL_HINT = (
+    " On Linux, install wl-clipboard for Wayland or xclip for X11 "
+    "to copy and paste clipboard images."
+)
 MACOS_FILE_URL_SCRIPT = """
 ObjC.import("AppKit");
 
@@ -110,6 +116,13 @@ def paste_images_from_clipboard(context: bpy.types.Context) -> list[PastedImage]
     if image is not None:
         return [image]
 
+    # Blender's X11 backend does not implement image clipboard support, so Linux
+    # has one optional PNG fallback through standard desktop clipboard tools.
+    # Windows and macOS stay Blender-owned here.
+    image = paste_linux_image_data_from_clipboard()
+    if image is not None:
+        return [image]
+
     return []
 
 
@@ -146,6 +159,31 @@ def paste_image_data_from_clipboard(context: bpy.types.Context) -> PastedImage |
     return PastedImage(image, SOURCE_CLIPBOARD_IMAGE)
 
 
+def paste_linux_image_data_from_clipboard() -> PastedImage | None:
+    if not sys.platform.startswith("linux"):
+        return None
+
+    data = linux_clipboard_png_bytes()
+    if not data:
+        return None
+
+    with NamedTemporaryFile(suffix=".png", delete=False) as file:
+        file.write(data)
+        temp_path = Path(file.name)
+
+    try:
+        image = bpy.data.images.load(str(temp_path), check_existing=False)
+        image.pack()
+        image.filepath = ""
+        image.filepath_raw = ""
+        mark_pasted_image(image, source_kind=SOURCE_CLIPBOARD_IMAGE)
+        return PastedImage(image, SOURCE_CLIPBOARD_IMAGE)
+    except RuntimeError:
+        return None
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
 def paste_image_files_from_clipboard(context: bpy.types.Context) -> list[PastedImage]:
     if context.window_manager is None:
         return []
@@ -168,8 +206,8 @@ def image_file_paths_from_clipboard(text: str) -> list[Path]:
             return existing_image_file_paths([*native_paths, *text_paths])
 
     # File managers often use native copied-file formats that are not exposed as
-    # Blender text. Read only those file-list formats here; raw image pixels still
-    # belong to bpy.ops.image.clipboard_paste().
+    # Blender text. Read only those file-list formats here. Linux image/png is
+    # handled later, after Blender has had the first chance to read clipboard pixels.
     if text_paths:
         return text_paths
 
@@ -306,10 +344,11 @@ def macos_clipboard_file_paths() -> list[Path]:
 
 
 def linux_clipboard_file_paths() -> list[Path]:
-    wayland_paths = linux_clipboard_file_paths_with_wl_paste()
-    if wayland_paths:
-        return wayland_paths
-    return linux_clipboard_file_paths_with_xclip()
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return linux_clipboard_file_paths_with_wl_paste()
+    if os.environ.get("DISPLAY"):
+        return linux_clipboard_file_paths_with_xclip()
+    return []
 
 
 def linux_clipboard_file_paths_with_wl_paste() -> list[Path]:
@@ -346,6 +385,42 @@ def linux_clipboard_file_paths_with_xclip() -> list[Path]:
     return image_file_paths_from_clipboard_text("\n".join(texts))
 
 
+def linux_clipboard_png_bytes() -> bytes:
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return linux_clipboard_png_bytes_with_wl_paste()
+    if os.environ.get("DISPLAY"):
+        return linux_clipboard_png_bytes_with_xclip()
+    return b""
+
+
+def linux_clipboard_png_bytes_with_wl_paste() -> bytes:
+    wl_paste = executable_path("wl-paste")
+    if wl_paste is None:
+        return b""
+
+    targets = set(clipboard_command_output([wl_paste, "--list-types"]).split())
+    if "image/png" not in targets:
+        return b""
+    return clipboard_command_bytes([wl_paste, "--type", "image/png"])
+
+
+def linux_clipboard_png_bytes_with_xclip() -> bytes:
+    xclip = executable_path("xclip")
+    if xclip is None:
+        return b""
+
+    targets = set(
+        clipboard_command_output(
+            [xclip, "-selection", "clipboard", "-target", "TARGETS", "-out"]
+        ).split()
+    )
+    if "image/png" not in targets:
+        return b""
+    return clipboard_command_bytes(
+        [xclip, "-selection", "clipboard", "-target", "image/png", "-out"]
+    )
+
+
 def executable_path(name: str) -> str | None:
     path = shutil.which(name)
     if path is None:
@@ -375,6 +450,31 @@ def clipboard_command_output(command: Sequence[str]) -> str:
     return result.stdout
 
 
+def clipboard_command_bytes(command: Sequence[str], *, stdin: bytes | None = None) -> bytes:
+    try:
+        if stdin is None:
+            result = subprocess.run(  # noqa: S603
+                command,
+                check=False,
+                capture_output=True,
+                stdin=subprocess.DEVNULL,
+                timeout=CLIPBOARD_COMMAND_TIMEOUT_SECONDS,
+            )
+        else:
+            result = subprocess.run(  # noqa: S603
+                command,
+                check=False,
+                capture_output=True,
+                input=stdin,
+                timeout=CLIPBOARD_COMMAND_TIMEOUT_SECONDS,
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        return b""
+    if result.returncode != 0:
+        return b""
+    return result.stdout
+
+
 def load_image_file(filepath: Path) -> bpy.types.Image | None:
     try:
         # Reuse an already-loaded image for the same path instead of making duplicates.
@@ -389,19 +489,49 @@ def load_image_file(filepath: Path) -> bpy.types.Image | None:
     )
 
 
-def paste_failed(operator: bpy.types.Operator) -> OperatorReturn:
-    operator.report({"WARNING"}, "No compatible image on the clipboard")
-    return {"CANCELLED"}
-
-
 def copy_failed(operator: bpy.types.Operator) -> OperatorReturn:
     operator.report({"WARNING"}, "No image available to copy")
     return {"CANCELLED"}
 
 
+def paste_failure_message() -> str:
+    message = "No compatible image on the clipboard"
+    if sys.platform.startswith("linux") and not linux_png_reader_available():
+        return message + LINUX_CLIPBOARD_TOOL_HINT
+    return message
+
+
+def copy_failure_message() -> str:
+    message = "Could not copy image to the clipboard"
+    if sys.platform.startswith("linux") and not linux_png_writer_available():
+        return message + LINUX_CLIPBOARD_TOOL_HINT
+    return message
+
+
+def linux_png_reader_available() -> bool:
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return executable_path("wl-paste") is not None
+    if os.environ.get("DISPLAY"):
+        return executable_path("xclip") is not None
+    return False
+
+
+def linux_png_writer_available() -> bool:
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return executable_path("wl-copy") is not None
+    if os.environ.get("DISPLAY"):
+        return executable_path("xclip") is not None
+    return False
+
+
+def paste_failed(operator: bpy.types.Operator) -> OperatorReturn:
+    operator.report({"WARNING"}, paste_failure_message())
+    return {"CANCELLED"}
+
+
 def copy_image_to_clipboard(context: bpy.types.Context, image: bpy.types.Image) -> bool:
     if context.area is None:
-        return False
+        return copy_image_to_linux_clipboard(image)
 
     with temporary_image_editor(context.area):
         space = context.area.spaces.active
@@ -409,9 +539,70 @@ def copy_image_to_clipboard(context: bpy.types.Context, image: bpy.types.Image) 
         space.image = image
         try:
             try:
-                return bpy.ops.image.clipboard_copy() == {"FINISHED"}
+                if bpy.ops.image.clipboard_copy() == {"FINISHED"}:
+                    return True
             except RuntimeError:
                 # Copy can fail its poll check on platforms without image clipboard support.
-                return False
+                pass
+            return copy_image_to_linux_clipboard(image)
         finally:
             space.image = previous_image
+
+
+def copy_image_to_linux_clipboard(image: bpy.types.Image) -> bool:
+    if not sys.platform.startswith("linux"):
+        return False
+
+    with NamedTemporaryFile(suffix=".png", delete=False) as file:
+        temp_path = Path(file.name)
+    try:
+        image.save_render(str(temp_path))
+        png = temp_path.read_bytes()
+    except (OSError, RuntimeError):
+        return False
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+    return copy_png_bytes_to_linux_clipboard(png)
+
+
+def copy_png_bytes_to_linux_clipboard(png: bytes) -> bool:
+    if os.environ.get("WAYLAND_DISPLAY"):
+        wl_copy = executable_path("wl-copy")
+        return wl_copy is not None and clipboard_command_succeeds(
+            [wl_copy, "--type", "image/png"], stdin=png
+        )
+
+    if not os.environ.get("DISPLAY"):
+        return False
+    xclip = executable_path("xclip")
+    if xclip is None:
+        return False
+    return clipboard_command_succeeds(
+        [xclip, "-selection", "clipboard", "-target", "image/png"], stdin=png
+    )
+
+
+def clipboard_command_succeeds(command: Sequence[str], *, stdin: bytes | None = None) -> bool:
+    try:
+        if stdin is None:
+            result = subprocess.run(  # noqa: S603
+                command,
+                check=False,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=CLIPBOARD_COMMAND_TIMEOUT_SECONDS,
+            )
+        else:
+            result = subprocess.run(  # noqa: S603
+                command,
+                check=False,
+                input=stdin,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=CLIPBOARD_COMMAND_TIMEOUT_SECONDS,
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0

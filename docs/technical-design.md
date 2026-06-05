@@ -22,7 +22,8 @@ The source order is intentional:
 
 ```text
 copied image files
-clipboard image
+Blender clipboard image
+Linux image/png fallback
 ```
 
 Copied files are checked first because they keep names, formats, paths, and multi-file selections. Pasty can find copied files through native file-list formats, plain paths, or `file://` URLs.
@@ -33,19 +34,20 @@ If no copied image files are found, Pasty uses Blender's own image clipboard ope
 bpy.ops.image.clipboard_paste()
 ```
 
-Pasty does not try to read operating-system image pixels itself. It lets Blender do that work.
+Pasty lets Blender own normal image clipboard reading. On Linux, after Blender fails, Pasty can read `image/png` through `wl-paste` or `xclip`. This covers Linux clipboard sessions where Blender does not provide image pixels.
 
 Copied file support has two layers. Pasty reads native copied-file formats where they preserve more information, and also reads Blender's text clipboard for image file paths and `file://` URLs. Several paths become several pasted images.
 
-The platform layer stays file-list-only:
+The platform layer stays narrow:
 
 - Windows reads `CF_HDROP`, the standard copied-file list from Explorer.
-- macOS reads pasteboard file URLs from `/usr/bin/osascript` and AppKit.
+- macOS reads pasteboard file URLs through `/usr/bin/osascript` and AppKit.
 - Linux reads `text/uri-list` and `x-special/gnome-copied-files` through `wl-paste` or `xclip` when those tools are installed.
+- Linux reads and writes `image/png` through `wl-paste`, `wl-copy`, or `xclip` only after Blender native image paste or copy fails.
 
 If those readers fail or are not available, Pasty falls back quietly.
 
-This matters because clipboard image handling is different across macOS, Windows, Linux X11, Linux Wayland, screenshots, browsers, Photoshop, ShareX, and copied image files. Rebuilding all of that inside the add-on creates a lot of fragile platform code.
+This matters because clipboard image handling is different across macOS, Windows, Linux X11, Linux Wayland, screenshots, browsers, Photoshop, ShareX, and copied image files. Pasty keeps platform code narrow by letting Blender handle image clipboard support first.
 
 ## Paste flow
 
@@ -62,7 +64,10 @@ flowchart TD
     F --> I["Pasty restores the original editor"]
     I --> H{"Did Blender create an image?"}
     H -->|"Yes"| G
-    H -->|"No"| J["Pasty reports that no compatible image was found"]
+    H -->|"No"| K["Read Linux image/png data"]
+    K --> L{"Did Pasty load image bytes?"}
+    L -->|"Yes"| G
+    L -->|"No"| J["Pasty reports that no compatible image was found"]
 ```
 
 The shared paste path lives in `temporary_image_editor()`, `paste_images_from_clipboard()`, and the image file helpers in `addon/clipboard.py`.
@@ -139,7 +144,7 @@ So Sequencer paste has one extra storage step: every pasted image must resolve t
 
 If the image came from a file path, Pasty uses the original path by default.
 
-If the image came from Blender's clipboard paste, Pasty saves the pasted image as a PNG.
+If the image came from Blender's clipboard paste or the Linux image/png fallback, Pasty saves the pasted image as a PNG.
 
 If several image files are copied, Pasty creates strips in a row starting at the current frame.
 
@@ -203,7 +208,7 @@ These ImagePaste issues show where platform clipboard code and older Blender API
 - Save-handler/operator breakage in Blender 4.5: [#64](https://github.com/b-init/ImagePaste/issues/64)
 - Unclear save folder behavior: [#26](https://github.com/b-init/ImagePaste/issues/26)
 
-Pasty avoids most of this by not owning platform image extraction. Blender owns clipboard image reading. Pasty only adds a small copied-file reader so file-manager copies can keep their original paths, names, formats, and multi-file selection.
+Pasty avoids most of this by not owning a broad platform image extraction stack. Blender owns clipboard image reading first. Pasty adds small copied-file readers so file-manager copies keep their original paths, names, formats, and multi-file selection. Pasty also has a narrow Linux `image/png` fallback for the cases Blender can miss.
 
 ## What Pasty does not try to do
 
@@ -211,13 +216,13 @@ Pasty intentionally does not try to be a full ImagePaste clone.
 
 It does not support:
 
-- raw OS-specific image clipboard extraction
+- broad OS-specific image clipboard extraction
 - moving user-owned files
 - moving all images in a `.blend`
 - save-time file moving
 - SVG or text clipboard handling
 
-Those features can be added later, but they should be added only when they fit the small native design.
+Those features can be added later, but they should be added only when they fit the small native design. The existing Linux fallback is intentionally smaller than a general clipboard backend: it reads only Linux `image/png` through standard desktop tools, and only after Blender native paste fails.
 
 ## Current limits
 
@@ -227,15 +232,16 @@ That means behavior can differ by platform. Blender's image clipboard support is
 
 Multiple-image paste works for copied file lists, clipboard text that exposes several image paths, or several file URLs. It does not mean Blender's native image clipboard operator can read several clipboard images at once.
 
-Linux X11 may be weaker depending on Blender and the desktop environment.
+Windows and macOS screenshot and browser image paste depend on Blender's native image clipboard support. Linux X11 screenshot and browser image paste is supported when `xclip` is installed and the clipboard offers `image/png`. Linux Wayland can use `wl-clipboard` for the same fallback if Blender misses the clipboard image. If the Linux tool is missing, Pasty shows an install hint. If the tool exists but the clipboard does not offer PNG data, Pasty keeps the normal "No compatible image" behavior.
 
-This is still better than shipping our own image clipboard stack, because Blender itself is the owner of clipboard image support.
+This keeps Blender as the owner of normal image clipboard support while Pasty covers copied-file paths and the small Linux image/png gap.
 
 ## Design rules
 
 - Use Blender's own operators when Blender already owns the behavior.
 - Read native copied-file lists only to preserve file paths and multi-file paste.
-- Do not read raw operating-system image data; Blender owns that.
+- Read image bytes only as a Linux fallback after Blender native image paste fails.
+- Find Linux clipboard tools through `PATH` so no path preference is needed.
 - Do not switch editor areas inside `poll()`.
 - Treat copied files and copied pixels as different sources.
 - Never move a user-owned file.
@@ -253,6 +259,7 @@ Headless tests can check:
 - image file paths and file URLs can be loaded
 - multiple image file paths create multiple target items
 - gathered images are copied beside the `.blend` without moving user files
+- Linux image/png paste and copy fallback behavior can work with mocked readers and writers
 
 Real clipboard behavior needs a local GUI smoke test, because headless Blender cannot fully prove system clipboard behavior. Hosted GitHub runners do not give us a stable system clipboard.
 
