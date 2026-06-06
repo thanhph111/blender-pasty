@@ -5,8 +5,14 @@ from importlib import util
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import ModuleType, SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 import bpy
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+MISSING_BLENDER_ATTR = object()
 
 
 def run_blender_checks(module: ModuleType, *, register_addon: bool) -> None:
@@ -82,14 +88,145 @@ def check_operator_ids(modules: SimpleNamespace) -> None:
 
 def check_registration_cycles(module: ModuleType, modules: SimpleNamespace) -> None:
     # Blender reloads add-ons during development. Two full cycles catch the common
-    # mistakes: classes that stay registered and shortcuts that are not removed.
+    # mistakes: classes, menu entries, or shortcuts that are not removed.
+    menu_counts_before = menu_hook_counts(modules)
+    keymap_counts_before = keymap_item_counts(modules)
+
     for _ in range(2):
         module.register()
-        module.unregister()
+        try:
+            assert_class_registration_state(modules, expected=True)
+            assert_menu_hook_counts(modules, menu_counts_before, expected_delta=1)
+            assert_keymap_item_counts(modules, keymap_counts_before, expected_delta=1)
+        finally:
+            module.unregister()
 
-    if modules.registration.addon_keymaps:
-        msg = "unregister left Pasty keymaps behind"
+        assert_class_registration_state(modules, expected=False)
+        assert_menu_hook_counts(modules, menu_counts_before, expected_delta=0)
+        assert_keymap_item_counts(modules, keymap_counts_before, expected_delta=0)
+        if modules.registration.addon_keymaps:
+            msg = "unregister left Pasty keymaps behind"
+            raise RuntimeError(msg)
+
+
+def assert_class_registration_state(modules: SimpleNamespace, *, expected: bool) -> None:
+    mismatched = [
+        cls.__name__
+        for cls in modules.registration.classes
+        if bool(getattr(cls, "is_registered", False)) != expected
+    ]
+    if mismatched:
+        state = "registered" if expected else "unregistered"
+        msg = f"expected Pasty classes to be {state}: {mismatched}"
         raise RuntimeError(msg)
+
+
+def menu_hook_counts(modules: SimpleNamespace) -> dict[tuple[object, object], int]:
+    return {
+        (menu, draw): menu_draw_functions(menu).count(draw)
+        for menu, draw in modules.registration.menu_hooks
+    }
+
+
+def assert_menu_hook_counts(
+    modules: SimpleNamespace,
+    counts_before: dict[tuple[object, object], int],
+    *,
+    expected_delta: int,
+) -> None:
+    for menu, draw in modules.registration.menu_hooks:
+        expected_count = counts_before[(menu, draw)] + expected_delta
+        actual_count = menu_draw_functions(menu).count(draw)
+        if actual_count != expected_count:
+            msg = (
+                f"expected {draw.__name__} on {menu.__name__} "
+                f"{expected_count} time(s), got {actual_count}"
+            )
+            raise RuntimeError(msg)
+
+
+def menu_draw_functions(menu: object) -> list[object]:
+    draw = blender_attr(menu, "draw")
+    draw_functions = blender_attr(draw, "_draw_funcs", ())
+    return list(cast("Iterable[object]", draw_functions))
+
+
+def keymap_item_counts(modules: SimpleNamespace) -> dict[tuple[object, ...], int]:
+    return {
+        spec_key(spec): len(matching_keymap_items(spec))
+        for spec in modules.registration.keymap_specs
+    }
+
+
+def assert_keymap_item_counts(
+    modules: SimpleNamespace, counts_before: dict[tuple[object, ...], int], *, expected_delta: int
+) -> None:
+    if addon_keyconfig() is None:
+        if modules.registration.addon_keymaps:
+            msg = "Pasty tracked keymaps even though Blender has no add-on keyconfig"
+            raise RuntimeError(msg)
+        return
+
+    for spec in modules.registration.keymap_specs:
+        key = spec_key(spec)
+        expected_count = counts_before[key] + expected_delta
+        actual_count = len(matching_keymap_items(spec))
+        if actual_count != expected_count:
+            keymap_name, _space_type, operator_id, _modifiers = spec
+            msg = (
+                f"expected {operator_id} shortcut in {keymap_name} "
+                f"{expected_count} time(s), got {actual_count}"
+            )
+            raise RuntimeError(msg)
+
+
+def spec_key(spec: tuple[object, ...]) -> tuple[object, ...]:
+    keymap_name, space_type, operator_id, modifiers_object = spec
+    modifiers = cast("dict[str, bool]", modifiers_object)
+    return keymap_name, space_type, operator_id, tuple(sorted(modifiers.items()))
+
+
+def matching_keymap_items(spec: tuple[object, ...]) -> list[object]:
+    keyconfig = addon_keyconfig()
+    if keyconfig is None:
+        return []
+
+    keymap_name, space_type, operator_id, modifiers_object = spec
+    modifiers = cast("dict[str, bool]", modifiers_object)
+    matches = []
+    keymaps = cast("Iterable[object]", blender_attr(keyconfig, "keymaps"))
+    for keymap in keymaps:
+        if (
+            blender_attr(keymap, "name") != keymap_name
+            or blender_attr(keymap, "space_type") != space_type
+        ):
+            continue
+        keymap_items = cast("Iterable[object]", blender_attr(keymap, "keymap_items"))
+        matches.extend(
+            keymap_item
+            for keymap_item in keymap_items
+            if (
+                blender_attr(keymap_item, "idname") == operator_id
+                and blender_attr(keymap_item, "type") == "V"
+                and blender_attr(keymap_item, "value") == "PRESS"
+                and all(getattr(keymap_item, name) == value for name, value in modifiers.items())
+            )
+        )
+    return matches
+
+
+def blender_attr(obj: object, name: str, default: object = MISSING_BLENDER_ATTR) -> object:
+    # fake-bpy cannot type every runtime Blender collection. Keep that dynamic
+    # boundary here so the cleanup checks can still assert real Blender state.
+    if default is MISSING_BLENDER_ATTR:
+        return getattr(obj, name)
+    return getattr(obj, name, default)
+
+
+def addon_keyconfig() -> object | None:
+    if bpy.context.window_manager is None:
+        return None
+    return bpy.context.window_manager.keyconfigs.addon
 
 
 def load_repo_addon() -> ModuleType:
