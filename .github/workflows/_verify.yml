@@ -13,11 +13,6 @@ on:
         required: false
         type: string
         default: ''
-      create_checksum:
-        description: Create and upload SHA256SUMS beside the extension zip
-        required: false
-        type: boolean
-        default: false
       profile:
         description: Check depth. Use fast for normal checks and full for release-candidate runs.
         required: false
@@ -401,27 +396,11 @@ jobs:
       - name: Build and check installed add-on
         run: mise run test package
 
-      - name: Create SHA256 checksum
-        if: inputs.create_checksum
-        shell: bash
-        run: shasum -a 256 dist/pasty-*.zip > dist/SHA256SUMS
-
       - name: Upload package artifact
-        if: ${{ !inputs.create_checksum }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}
           path: dist/pasty-*.zip
-          if-no-files-found: error
-
-      - name: Upload package artifact
-        if: inputs.create_checksum
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ inputs.artifact_name }}
-          path: |
-            dist/pasty-*.zip
-            dist/SHA256SUMS
           if-no-files-found: error
 
       - name: Minimize uv cache

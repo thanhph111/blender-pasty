@@ -130,7 +130,6 @@ jobs:
         run: |
           gh run download "$BUILD_RUN_ID" --name pasty-release-package --dir dist
           test -n "$(find dist -maxdepth 1 -type f -name 'pasty-*.zip' | head -n 1)"
-          test -f dist/SHA256SUMS
 
       - name: Write release notes from changelog
         shell: bash
@@ -147,11 +146,10 @@ jobs:
             gh release edit "$RELEASE_TAG" \
               --title "$RELEASE_TAG" \
               --notes-file dist/RELEASE_NOTES.md
-            gh release upload "$RELEASE_TAG" dist/pasty-*.zip dist/SHA256SUMS --clobber
+            gh release upload "$RELEASE_TAG" dist/pasty-*.zip --clobber
           else
             gh release create "$RELEASE_TAG" \
               dist/pasty-*.zip \
-              dist/SHA256SUMS \
               --draft \
               --verify-tag \
               --title "$RELEASE_TAG" \

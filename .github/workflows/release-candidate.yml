@@ -22,5 +22,4 @@ jobs:
     with:
       artifact_name: pasty-release-package
       checkout_ref: ${{ github.sha }}
-      create_checksum: true
       profile: full
