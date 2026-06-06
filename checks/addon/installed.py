@@ -5,11 +5,11 @@ from pathlib import Path
 
 import addon_utils
 
-# Blender runs this as a file, so Python starts from checks/. Add the repo root
-# before importing the shared add-on behavior checks.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Blender runs this as a file, so Python starts from checks/addon. Add the repo
+# root before importing the shared add-on behavior checks.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from checks.addon_behavior import run_blender_checks
+from checks.addon.behavior import run_blender_checks
 
 
 def main() -> None:

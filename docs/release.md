@@ -36,8 +36,9 @@ Use these version bumps:
    ```bash
    mise run lint
    mise run test
-   mise run test clipboard all
    mise run test package
+   mise run test clipboard all
+   mise run test linux all
    ```
 
 5. Check the built package in `dist/`.

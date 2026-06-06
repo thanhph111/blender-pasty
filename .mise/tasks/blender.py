@@ -7,6 +7,9 @@
 # [USAGE] cmd run help="Run the Blender binary used by automated checks" {
 # [USAGE]   arg "[args]..." help="Arguments passed to Blender"
 # [USAGE] }
+# [USAGE] cmd path help="Print the Blender binary path used by automated checks" {
+# [USAGE]   arg "<version>" help="Blender version or series, such as 4.2 or 4.2.21"
+# [USAGE] }
 
 import argparse
 import os
@@ -29,12 +32,19 @@ def main() -> None:
     run = subparsers.add_parser("run", help="Run the Blender binary used by automated checks")
     run.add_argument("args", nargs=argparse.REMAINDER)
 
+    path = subparsers.add_parser(
+        "path", help="Print the Blender binary path used by automated checks"
+    )
+    path.add_argument("version")
+
     args = parser.parse_args()
 
     if args.command == "install":
         install_blender(args.version)
     elif args.command == "run":
         run_blender(args.args)
+    elif args.command == "path":
+        print_blender_path(args.version)
 
 
 def install_blender(version_spec: str) -> None:
@@ -80,15 +90,21 @@ def install_blender(version_spec: str) -> None:
 
 
 def run_blender(args: list[str]) -> None:
-    blender_bin = os.environ.get("BLENDER_BIN")
+    blender_bin = os.environ.get("BLENDER_BIN") or shutil.which("blender")
     if not blender_bin:
-        msg = "BLENDER_BIN is not set"
+        msg = "Blender not found. Set BLENDER_BIN or put blender on PATH."
         raise RuntimeError(msg)
 
     if args[:1] == ["--"]:
         args = args[1:]
 
     subprocess.run([blender_bin, *args], check=True)
+
+
+def print_blender_path(version_spec: str) -> None:
+    system = runner_os()
+    arch = runner_arch()
+    print(blender_binary(install_root(version_spec, system, arch), system))
 
 
 def runner_os() -> str:

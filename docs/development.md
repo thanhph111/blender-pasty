@@ -25,12 +25,15 @@ Common checks:
 mise run lint
 mise run test
 mise run test package
+mise run test linux x11
 mise run build
 ```
 
-`mise run test` validates the extension manifest and runs the headless Blender API checks.
+`mise run test` validates the extension manifest and runs the source add-on behavior checks.
 
 `mise run test package` builds the extension zip, installs that zip into a clean temporary Blender extension repository, enables it, and runs the checks against the installed extension.
+
+`mise run test linux x11` runs the Linux X11 clipboard checks in Docker. Use `mise run test linux wayland` for the Wayland lab.
 
 `mise run build` writes the extension zip to `dist/`.
 
@@ -155,8 +158,14 @@ BLENDER_BIN=/path/to/blender mise run dev debug --wait
 mise run deps             install project dependencies
 mise run setup            install dependencies and Git hooks
 mise run lint             run formatters and linters
-mise run test             validate the manifest and check the add-on
-mise run test package     build, install, and check the packaged zip
+mise run test            validate the manifest and check the source add-on
+mise run test source     same as mise run test
+mise run test package    build, install, and check the packaged zip
+mise run test clipboard  run live clipboard checks on the current desktop
+mise run test linux x11  run Linux X11 clipboard checks in Docker
+mise run test linux wayland
+                         run Linux Wayland clipboard checks in Docker
+mise run test linux all  run both Docker Linux clipboard checks
 mise run build            build dist/pasty-*.zip
 mise run release-notes    print release notes from CHANGELOG.md
 mise run blender install  install a Blender build for automated checks
@@ -172,4 +181,4 @@ mise run dev debug        launch Blender with debugpy listening
 
 `.github/workflows/checks.yml` runs the PR commit-message check, then calls `.github/workflows/_verify.yml`.
 
-The shared checks workflow runs lint, source add-on checks, hosted Linux live clipboard checks, headless Blender checks, then installed add-on checks. The full release-candidate run checks Linux, Windows, and Apple Silicon macOS in headless Blender, plus the hosted Linux live clipboard sessions listed in [testing.md](testing.md).
+The shared checks workflow runs lint, source add-on checks, Linux live clipboard checks, headless Blender checks, then installed add-on checks. The full release-candidate run checks Linux, Windows, and Apple Silicon macOS in headless Blender, plus the Linux live clipboard sessions listed in [testing.md](testing.md).

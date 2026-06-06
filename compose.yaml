@@ -1,0 +1,41 @@
+name: blender-pasty
+
+x-linux-test: &linux-test
+  platform: linux/amd64
+  build:
+    context: .
+    dockerfile: docker/linux-test/Dockerfile
+  working_dir: /workspace
+  init: true
+  environment:
+    BLENDER_USER_CONFIG: /workspace/.cache/blender-user/config
+    BLENDER_USER_EXTENSIONS: /workspace/.cache/blender-user/extensions
+    BLENDER_USER_SCRIPTS: /workspace/.cache/blender-user/scripts
+    DPRINT_CACHE_DIR: /workspace/.cache/dprint
+    MISE_TRUSTED_CONFIG_PATHS: /workspace
+    PASTY_BLENDER_VERSION: ${PASTY_BLENDER_VERSION:-5.1}
+    PASTY_CLIPBOARD_SCENARIO: ${PASTY_CLIPBOARD_SCENARIO:-all}
+    UV_CACHE_DIR: /workspace/.cache/uv
+    UV_LINK_MODE: copy
+    VIRTUAL_ENV: ''
+  volumes:
+    - .:/workspace
+    - pasty-mise-cache-amd64:/root/.local/share/mise
+    - pasty-prek-cache-amd64:/root/.cache/prek
+    - pasty-venv-amd64:/workspace/.venv
+
+services:
+  linux-x11:
+    <<: *linux-test
+    profiles: [linux-x11, linux-desktop]
+    command: ['checks/linux/docker.sh', 'x11']
+
+  linux-wayland:
+    <<: *linux-test
+    profiles: [linux-wayland, linux-desktop]
+    command: ['checks/linux/docker.sh', 'wayland']
+
+volumes:
+  pasty-mise-cache-amd64:
+  pasty-prek-cache-amd64:
+  pasty-venv-amd64:

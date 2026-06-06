@@ -263,10 +263,11 @@ Headless tests check:
 
 Live clipboard tests use a seed and verify split:
 
-- `checks/clipboard_os.py` seeds or checks the real OS clipboard.
-- `checks/clipboard_blender.py` runs inside Blender and checks Pasty behavior.
+- `checks/clipboard/run.py` owns scenario order, Blender process handling, timeouts, result files, and Wayland input signaling.
+- `checks/clipboard/os.py` seeds or checks the real OS clipboard.
+- `checks/clipboard/blender.py` runs inside Blender and checks Pasty behavior.
 
-Shared add-on behavior checks live in `checks/addon_behavior.py`. `checks/source_addon.py` runs those checks against the source checkout, and `checks/installed_addon.py` runs the same checks against the installed zip.
+Shared add-on behavior checks live in `checks/addon/behavior.py`. `checks/addon/source.py` validates the manifest and runs those checks against the source checkout. `checks/addon/package.py` owns the packaged install smoke path, and `checks/addon/installed.py` runs the same checks against the installed zip.
 
 The live scenarios are:
 
@@ -274,7 +275,7 @@ The live scenarios are:
 - `paste-image`: one seeded PNG pastes as `SOURCE_CLIPBOARD_IMAGE`.
 - `copy-image`: Blender copies an image after a real GUI input event, and the OS helper verifies image data on the clipboard while Blender stays open.
 
-The full hosted CI profile runs those live scenarios on Linux X11 across Blender 4.2, 4.5, and 5.1, and on Linux Wayland across Blender 4.2 and 5.1. Blender 4.5 is not a hosted Linux Wayland live clipboard gate because Blender exits in headless Sway during image paste before Pasty can write a result. macOS and Windows still run headless Blender checks in hosted CI. Live clipboard checks on those platforms stay local until the project has real desktop runners.
+The full hosted CI profile runs those live scenarios on Linux X11 across Blender 4.2, 4.5, and 5.1, and on Linux Wayland across Blender 4.2 and 5.1. GitHub Actions runs those checks directly on the Ubuntu runner after installing the display tools. Docker is only the local Linux lab. Blender 4.5 is not a hosted Linux Wayland live clipboard gate because Blender exits in headless Sway during image paste before Pasty can write a result. macOS and Windows still run headless Blender checks in hosted CI. Live clipboard checks on those platforms stay local until the project has real desktop runners.
 
 ## References
 

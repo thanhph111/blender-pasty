@@ -122,7 +122,7 @@ jobs:
         run: mise run deps
 
       - name: Run source add-on checks
-        run: mise run test
+        run: mise run test source
 
       - name: Minimize uv cache
         run: mise exec -- uv cache prune --ci
@@ -143,7 +143,7 @@ jobs:
       - name: Choose headless Blender targets
         id: matrix
         run: >-
-          .github/workflows/scripts/plan_targets.py headless
+          python .github/workflows/scripts/plan_targets.py headless
           --profile '${{ inputs.profile }}'
 
   headless-blender:
@@ -232,7 +232,7 @@ jobs:
         run: mise run blender run -- --version
 
       - name: Run headless Blender checks
-        run: mise run blender run -- --background --factory-startup --python-exit-code 1 --python checks/source_addon.py
+        run: mise run blender run -- --background --factory-startup --python-exit-code 1 --python checks/addon/source.py
 
   live-clipboard-targets:
     name: Plan live clipboard targets
@@ -250,7 +250,7 @@ jobs:
       - name: Choose live clipboard targets
         id: matrix
         run: >-
-          .github/workflows/scripts/plan_targets.py clipboard
+          python .github/workflows/scripts/plan_targets.py clipboard
           --profile '${{ inputs.profile }}'
 
   live-clipboard:
@@ -312,13 +312,13 @@ jobs:
           path: .cache/blender
           key: blender-${{ matrix.cache_key }}-${{ runner.arch }}
 
-      - name: Install Linux X11 clipboard tools
+      - name: Install Linux X11 desktop tools
         if: matrix.session == 'linux-x11'
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb xauth xclip libegl1
 
-      - name: Install Linux Wayland clipboard tools
+      - name: Install Linux Wayland desktop tools
         if: matrix.session == 'linux-wayland'
         run: |
           sudo apt-get update
@@ -341,11 +341,15 @@ jobs:
 
       - name: Run Linux X11 clipboard check
         if: matrix.session == 'linux-x11'
-        run: .github/workflows/scripts/run_linux_x11_clipboard.sh
+        env:
+          PASTY_CLIPBOARD_SCENARIO: all
+        run: bash checks/linux/x11.sh
 
       - name: Run Linux Wayland clipboard check
         if: matrix.session == 'linux-wayland'
-        run: .github/workflows/scripts/run_linux_wayland_clipboard.sh
+        env:
+          PASTY_CLIPBOARD_SCENARIO: all
+        run: bash checks/linux/wayland.sh
 
   installed-addon:
     name: Installed add-on

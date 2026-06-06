@@ -78,6 +78,26 @@ split-on-trailing-comma = false
     "S607", # Repo commands are expected to be on PATH.
     "T201", # This task prints Blender commands for release logs.
 ]
+"checks/addon/source.py" = [
+    "E402", # This script adds the repo root before importing the checks package.
+    "S603", # This check intentionally runs the local mise command.
+    "S607", # Repo commands are expected to be on PATH.
+]
+"checks/addon/package.py" = [
+    "S603", # This check intentionally launches local tools and Blender.
+    "T201", # This check prints Blender commands for release logs.
+]
+"checks/clipboard/run.py" = [
+    "E402", # This script adds the repo root before importing the checks package.
+    "S603", # This check intentionally launches local tools and Blender.
+    "S607", # Repo commands are expected to be on PATH.
+    "T201", # This check prints Blender commands for release logs.
+]
+"checks/linux/run.py" = [
+    "E402", # This script adds the repo root before importing the checks package.
+    "S603", # This check intentionally launches local tools and Docker.
+    "S607", # Repo commands are expected to be on PATH.
+]
 ".mise/tasks/dev.py" = [
     "PLR0912", # The command dispatcher is clearer as one small match table.
     "S603", # This task intentionally runs local Blender and mise commands.

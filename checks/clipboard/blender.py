@@ -12,19 +12,17 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-# This file is run by Blender, so Python starts from checks/. Add the repo root
-# before importing the shared add-on behavior helpers.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# This file is run by Blender, so Python starts from checks/clipboard. Add the
+# repo root before importing the shared add-on behavior helpers.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from checks.addon_behavior import addon_modules, load_repo_addon
+from checks.addon.behavior import addon_modules, load_repo_addon
+from checks.clipboard.scenarios import COPIED_FILE_FIXTURES, SCENARIOS
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from types import SimpleNamespace
 
-ROOT = Path(__file__).resolve().parents[1]
-FIXTURE_DIR = ROOT / "checks" / "fixtures" / "images"
-COPIED_FILE_FIXTURES = (FIXTURE_DIR / "red.png", FIXTURE_DIR / "green.png")
 RESULT_ENV = "PASTY_CLIPBOARD_RESULT"
 RELEASE_ENV = "PASTY_CLIPBOARD_RELEASE"
 INPUT_READY_ENV = "PASTY_CLIPBOARD_INPUT_READY"
@@ -34,13 +32,8 @@ INPUT_TIMEOUT_SECONDS = 30
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="clipboard_blender")
-    parser.add_argument(
-        "scenario",
-        choices=("copied-files", "paste-image", "copy-image", "all"),
-        default="all",
-        nargs="?",
-    )
+    parser = argparse.ArgumentParser(prog="clipboard blender")
+    parser.add_argument("scenario", choices=(*SCENARIOS, "all"), default="all", nargs="?")
     args = parser.parse_args(blender_args())
 
     if bpy.app.background:
@@ -141,8 +134,7 @@ def run_checks(scenario: str) -> None:
     module = load_repo_addon()
     modules = addon_modules(module)
 
-    scenarios = ("copied-files", "paste-image", "copy-image")
-    for current_scenario in scenarios if scenario == "all" else (scenario,):
+    for current_scenario in SCENARIOS if scenario == "all" else (scenario,):
         if current_scenario == "copied-files":
             check_copied_files(modules)
         elif current_scenario == "paste-image":

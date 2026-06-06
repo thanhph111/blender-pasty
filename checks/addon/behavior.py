@@ -230,7 +230,7 @@ def addon_keyconfig() -> object | None:
 
 
 def load_repo_addon() -> ModuleType:
-    addon_dir = Path(__file__).resolve().parents[1]
+    addon_dir = Path(__file__).resolve().parents[2]
     addon_path = addon_dir / "__init__.py"
     # Load the source package directly so source add-on checks do not depend on
     # a Blender install step.
@@ -774,7 +774,7 @@ def clipboard_paste_poll_failed() -> None:
 
 
 def check_linux_clipboard_image_fallback_can_be_loaded(modules: SimpleNamespace) -> None:
-    fixture = Path(__file__).resolve().parent / "fixtures" / "images" / "red.png"
+    fixture = Path(__file__).resolve().parents[1] / "fixtures" / "images" / "red.png"
     original_platform = modules.clipboard.sys.platform
     original_png_bytes = modules.clipboard.linux_clipboard_png_bytes
     try:

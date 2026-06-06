@@ -20,7 +20,7 @@ XCLIP_SEED_LOOPS = "8"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="clipboard_os")
+    parser = argparse.ArgumentParser(prog="clipboard os")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     files_commands = ("seed-files", "expect-files")
