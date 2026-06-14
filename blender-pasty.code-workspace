@@ -108,8 +108,10 @@
             "charliermarsh.ruff",
             "dprint.dprint",
             "github.vscode-github-actions",
+            "hverlin.mise-vscode",
             "ms-python.debugpy",
-            "ms-python.python"
+            "ms-python.python",
+            "timonwong.shellcheck"
         ]
     }
 }
