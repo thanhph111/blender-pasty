@@ -45,7 +45,7 @@ jobs:
       tag: ${{ steps.resolve.outputs.tag }}
     steps:
       - name: Check out release tag
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: refs/tags/${{ env.RELEASE_TAG }}
           fetch-depth: 0
@@ -112,7 +112,7 @@ jobs:
       contents: write
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: refs/tags/${{ needs.resolve-build.outputs.tag }}
           persist-credentials: false
@@ -167,7 +167,7 @@ jobs:
       contents: read
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: refs/tags/${{ needs.resolve-build.outputs.tag }}
           persist-credentials: false
