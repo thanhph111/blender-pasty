@@ -11,6 +11,9 @@
 # [USAGE]   arg "<version>" help="Blender version or series, such as 4.2 or 4.2.21"
 # [USAGE] }
 
+# This task downloads, extracts, runs, and logs local Blender builds for checks.
+# ruff: noqa: S202, S603, S607, T201
+
 import argparse
 import os
 import platform

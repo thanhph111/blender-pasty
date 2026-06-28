@@ -1,6 +1,7 @@
 [project]
 name = "blender-pasty"
-version = "0.2.0"
+# Pasty releases use blender_manifest.toml; this Python project only owns tooling.
+version = "0.0.0"
 description = "Paste clipboard images into Blender"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -18,6 +19,7 @@ dev = [
 ]
 
 [tool.uv]
+package = false
 environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
 
 [tool.ruff]
@@ -41,65 +43,13 @@ split-on-trailing-comma = false
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = [
-    "N999", # Don't check package __init__.py files.
+    "N999", # Repo path has a hyphen, so package marker files inherit that name.
 ]
-"addon/__init__.py" = [
-    "N999", # Don't check package __init__.py files.
+"addon/**/*.py" = [
+    "N801", # Blender class names use add-on/operator prefixes.
 ]
 "addon/areas/*.py" = [
     "ANN", # Blender callbacks keep the bpy-owned signature shape.
-    "N801", # Blender operator class names use the add-on prefix.
     "S101", # Blender operators use assertions for runtime context checks.
     "TID252", # Blender loads extensions under bl_ext.*, so parent-relative imports are correct.
-]
-"addon/preferences.py" = [
-    "N801", # Blender preference class names use the add-on prefix.
-]
-"addon/storage.py" = [
-    "N801", # Blender operator class names use the add-on prefix.
-]
-".mise/tasks/extension.py" = [
-    "PLC0415", # The bpy fallback imports Blender-owned modules only when needed.
-    "S603", # This task intentionally runs the local Blender binary.
-    "T201", # This task prints user-facing command errors.
-]
-".mise/tasks/blender.py" = [
-    "PLR0912", # The command dispatcher and platform branches are clearer in one task.
-    "S202", # GitHub checks extract official Blender archives downloaded from blender.org.
-    "S603", # GitHub checks intentionally launch local tools and Blender.
-    "S607", # GitHub-hosted runner tools are expected to be on PATH.
-    "T201", # The Blender task prints useful paths in workflow logs.
-]
-".mise/tasks/release-notes.py" = [
-    "T201", # This task prints release notes for humans and release workflows.
-]
-".mise/tasks/test.py" = [
-    "S603", # This task intentionally launches local tools and Blender.
-    "S607", # Repo commands are expected to be on PATH.
-    "T201", # This task prints Blender commands for release logs.
-]
-"checks/addon/source.py" = [
-    "E402", # This script adds the repo root before importing the checks package.
-    "S603", # This check intentionally runs the local mise command.
-    "S607", # Repo commands are expected to be on PATH.
-]
-"checks/addon/package.py" = [
-    "S603", # This check intentionally launches local tools and Blender.
-    "T201", # This check prints Blender commands for release logs.
-]
-"checks/clipboard/run.py" = [
-    "E402", # This script adds the repo root before importing the checks package.
-    "S603", # This check intentionally launches local tools and Blender.
-    "S607", # Repo commands are expected to be on PATH.
-    "T201", # This check prints Blender commands for release logs.
-]
-"checks/linux/run.py" = [
-    "E402", # This script adds the repo root before importing the checks package.
-    "S603", # This check intentionally launches local tools and Docker.
-    "S607", # Repo commands are expected to be on PATH.
-]
-".mise/tasks/dev.py" = [
-    "PLR0912", # The command dispatcher is clearer as one small match table.
-    "S603", # This task intentionally runs local Blender and mise commands.
-    "T201", # This task prints user-facing setup instructions.
 ]

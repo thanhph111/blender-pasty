@@ -12,6 +12,9 @@
 # [USAGE]   choices "all" "copied-files" "paste-image" "copy-image"
 # [USAGE] }
 
+# This dispatcher runs repo check scripts and leaves command output visible.
+# ruff: noqa: S603
+
 import argparse
 import subprocess
 import sys

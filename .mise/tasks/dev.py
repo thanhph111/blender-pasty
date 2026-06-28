@@ -14,6 +14,9 @@
 # [USAGE]   flag "--blender <path>" help="Path to the Blender executable"
 # [USAGE] }
 
+# This task launches local Blender/mise commands and prints setup paths.
+# ruff: noqa: S603, T201
+
 import argparse
 import os
 import platform

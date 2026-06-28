@@ -1,9 +1,11 @@
+# This file can be run as a script, so Python starts from checks/addon. Add the
+# repo root before importing the shared add-on behavior checks.
+# ruff: noqa: E402, S607
+
 import subprocess
 import sys
 from pathlib import Path
 
-# This file can be run as a script, so Python starts from checks/addon. Add the
-# repo root before importing the shared add-on behavior checks.
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 

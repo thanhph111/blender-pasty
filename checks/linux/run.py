@@ -1,3 +1,6 @@
+# This check runs Docker Compose for the local Linux clipboard lab.
+# ruff: noqa: E402, S603, S607
+
 import argparse
 import os
 import shutil

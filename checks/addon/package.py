@@ -1,3 +1,6 @@
+# This check installs the built add-on into Blender and prints the Blender commands.
+# ruff: noqa: S603, T201
+
 import os
 import shutil
 import subprocess

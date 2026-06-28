@@ -1,3 +1,6 @@
+# This check runs local clipboard helpers and Blender, with visible command output.
+# ruff: noqa: E402, S603, S607, T201
+
 import argparse
 import json
 import os

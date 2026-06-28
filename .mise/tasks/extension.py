@@ -2,6 +2,9 @@
 
 # [MISE] description="Run Blender extension commands"
 
+# This task runs the local Blender command or falls back to bpy, then reports errors.
+# ruff: noqa: PLC0415, S603, T201
+
 import os
 import shutil
 import subprocess
