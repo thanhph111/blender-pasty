@@ -86,8 +86,8 @@ BLENDER_BIN=/Applications/Blender.app/Contents/MacOS/Blender mise run test clipb
 For the Docker Linux checks, choose the Blender series with `PASTY_BLENDER_VERSION`:
 
 ```bash
-PASTY_BLENDER_VERSION=4.2 mise run test linux x11
-PASTY_BLENDER_VERSION=5.1 mise run test linux wayland
+PASTY_BLENDER_VERSION=<series> mise run test linux x11
+PASTY_BLENDER_VERSION=<series> mise run test linux wayland
 ```
 
 ## Check files
@@ -169,18 +169,17 @@ They are intentionally small so they can stay in the repo and be copied around f
 
 ## CI profiles
 
-The fast profile runs on pull requests and pushes to `main`. It keeps feedback short:
+The fast profile runs on pull requests. It keeps feedback short:
 
 - lint
 - source add-on checks
 - installed add-on checks
 - fast headless Blender matrix
-- one Linux X11 live clipboard check on Blender 5.1
+- one Linux X11 live clipboard check
 
-The full profile runs for release candidates. It adds the live clipboard matrix:
+The full profile runs on pushes to `main`. It adds the full hosted live clipboard matrix.
 
-- Linux X11 on Blender 4.2, 4.5, and 5.1
-- Linux Wayland on Blender 4.2 and 5.1
+`.github/workflows/scripts/plan_targets.py` owns the exact hosted Blender versions, runners, and any runner-specific exclusions. Keep the list there so docs do not drift from CI.
 
 Linux X11 uses the GitHub runner directly with `xvfb` and `xclip`.
 
@@ -190,7 +189,7 @@ Blender 4.5 is still checked in Linux X11 live clipboard jobs and in the full he
 
 Hosted macOS and Windows runners still run headless Blender checks in the full profile, but they are not treated as live clipboard release gates. Pasty depends on Blender's native image clipboard support on those platforms, and hosted runners do not give us the same controlled desktop session as a logged-in artist machine.
 
-Run macOS and Windows live clipboard checks locally with `mise run test clipboard all`. If the project later gets real desktop self-hosted runners, those jobs can become release gates without changing product code.
+Run macOS and Windows live clipboard checks locally with `mise run test clipboard all`. With real desktop self-hosted runners, those jobs can become release gates without changing product code.
 
 ## Docker Linux lab
 

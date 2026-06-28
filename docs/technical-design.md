@@ -198,14 +198,14 @@ The goal is not to become a bigger ImagePaste. The goal is to be smaller, more n
 
 ## Why Pasty uses Blender clipboard support
 
-These ImagePaste issues show where platform clipboard code and older Blender APIs can break. These examples were checked on May 31, 2026.
+These ImagePaste issues show where platform clipboard code and older Blender APIs can break.
 
 - macOS native pasteboard import failures: [#55](https://github.com/b-init/ImagePaste/issues/55), [#60](https://github.com/b-init/ImagePaste/issues/60), [#61](https://github.com/b-init/ImagePaste/issues/61)
 - Linux `xclip` or process failures: [#35](https://github.com/b-init/ImagePaste/issues/35), [#51](https://github.com/b-init/ImagePaste/issues/51), [#62](https://github.com/b-init/ImagePaste/issues/62)
 - Windows clipboard format gaps: [#23](https://github.com/b-init/ImagePaste/issues/23), [#38](https://github.com/b-init/ImagePaste/issues/38), [#39](https://github.com/b-init/ImagePaste/issues/39)
 - Blender API churn around reference images and image planes: [#56](https://github.com/b-init/ImagePaste/issues/56), [#59](https://github.com/b-init/ImagePaste/issues/59), [#66](https://github.com/b-init/ImagePaste/issues/66)
-- Blender 5 Sequencer API breakage: [#65](https://github.com/b-init/ImagePaste/issues/65)
-- Save-handler/operator breakage in Blender 4.5: [#64](https://github.com/b-init/ImagePaste/issues/64)
+- Sequencer API breakage: [#65](https://github.com/b-init/ImagePaste/issues/65)
+- Save-handler/operator breakage: [#64](https://github.com/b-init/ImagePaste/issues/64)
 - Unclear save folder behavior: [#26](https://github.com/b-init/ImagePaste/issues/26)
 
 Pasty avoids most of this by not owning a broad platform image extraction stack. Blender owns clipboard image reading first. Pasty adds small copied-file readers so file-manager copies keep their original paths, names, formats, and multi-file selection. Pasty also has a narrow Linux `image/png` fallback for the cases Blender can miss.
@@ -222,7 +222,7 @@ It does not support:
 - save-time file moving
 - SVG or text clipboard handling
 
-Those features can be added later, but they should be added only when they fit the small native design. The existing Linux fallback is intentionally smaller than a general clipboard backend: it reads only Linux `image/png` through standard desktop tools, and only after Blender native paste fails.
+If any of those features is added, it should fit the small native design. The existing Linux fallback is intentionally smaller than a general clipboard backend: it reads only Linux `image/png` through standard desktop tools, and only after Blender native paste fails.
 
 ## Current limits
 
@@ -275,12 +275,12 @@ The live scenarios are:
 - `paste-image`: one seeded PNG pastes as `SOURCE_CLIPBOARD_IMAGE`.
 - `copy-image`: Blender copies an image after a real GUI input event, and the OS helper verifies image data on the clipboard while Blender stays open.
 
-The full hosted CI profile runs those live scenarios on Linux X11 across Blender 4.2, 4.5, and 5.1, and on Linux Wayland across Blender 4.2 and 5.1. GitHub Actions runs those checks directly on the Ubuntu runner after installing the display tools. Docker is only the local Linux lab. Blender 4.5 is not a hosted Linux Wayland live clipboard gate because Blender exits in headless Sway during image paste before Pasty can write a result. macOS and Windows still run headless Blender checks in hosted CI. Live clipboard checks on those platforms stay local until the project has real desktop runners.
+The full hosted CI profile runs the live scenarios chosen by `.github/workflows/scripts/plan_targets.py`. GitHub Actions runs those checks directly on the Ubuntu runner after installing the display tools. Docker is only the local Linux lab. macOS and Windows still run headless Blender checks in hosted CI. Live clipboard checks on those platforms stay local until the project has real desktop runners.
 
 ## References
 
-- [Blender image operators](https://docs.blender.org/api/4.2/bpy.ops.image.html)
-- [Blender extension manifest permissions](https://docs.blender.org/manual/en/4.2/advanced/extensions/getting_started.html)
+- [Blender image operators](https://docs.blender.org/api/current/bpy.ops.image.html)
+- [Blender extension manifest permissions](https://docs.blender.org/manual/en/latest/advanced/extensions/getting_started.html)
 - [Microsoft Shell Clipboard Formats](https://learn.microsoft.com/en-us/windows/win32/shell/clipboard)
 - [Apple NSPasteboard](https://developer.apple.com/documentation/AppKit/NSPasteboard)
 - [wl-paste manual](https://man.archlinux.org/man/wl-paste.1.en)

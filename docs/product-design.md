@@ -1,6 +1,6 @@
 # Product design
 
-This document records the long-term product shape for Pasty. It keeps file handling, preferences, and naming aligned with the goal: paste images into Blender without turning the add-on into a file manager.
+This document records the product shape for Pasty. It keeps file handling, preferences, and naming aligned with the goal: paste images into Blender without turning the add-on into a file manager.
 
 ## Product promise
 
@@ -26,7 +26,7 @@ If the clipboard contains image files, Pasty should use those files first. Files
 
 If the clipboard contains pixels from a screenshot, browser, or image editor, Pasty should treat that as a new pasted image.
 
-Blender should read those pixels first. Pasty adds platform image readers only where Blender leaves a known gap. Today that means a Linux `image/png` reader through `wl-clipboard` or `xclip` after Blender fails.
+Blender should read those pixels first. Pasty adds platform image readers only where Blender leaves a known gap. The known gap Pasty covers is Linux `image/png` through `wl-clipboard` or `xclip` after Blender fails.
 
 Successful Linux fallback should stay quiet. If fallback is needed but the tool is missing, Pasty should show a short install hint. Standard desktop clipboard tools are found through `PATH`, so the preferences stay focused on storage and naming.
 

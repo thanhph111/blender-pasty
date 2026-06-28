@@ -23,7 +23,7 @@ Pasty checks copied image files first, including Finder, Explorer, common Linux 
 
 ## Install
 
-Download the latest `pasty-*.zip` from the GitHub Releases page.
+Download the latest `pasty-*.zip` from [GitHub Releases](https://github.com/thanhph111/blender-pasty/releases).
 
 In Blender:
 

@@ -6,7 +6,7 @@ For the product vision and preference design, see [product-design.md](product-de
 
 For code boundaries and ImagePaste comparison, see [technical-design.md](technical-design.md).
 
-For real clipboard checks, release checks, and packaged install testing, see [testing.md](testing.md).
+For real clipboard checks and packaged install testing, see [testing.md](testing.md).
 
 For release publishing, see [release.md](release.md).
 
@@ -167,7 +167,10 @@ mise run test linux wayland
                          run Linux Wayland clipboard checks in Docker
 mise run test linux all  run both Docker Linux clipboard checks
 mise run build            build dist/pasty-*.zip
-mise run release-notes    print release notes from CHANGELOG.md
+mise run release notes    print release notes from CHANGELOG.md
+mise run release prepare  update release version files
+mise run release ship     create and push the signed release tag
+mise run release upload   upload a GitHub release asset to Blender Extensions
 mise run blender install  install a Blender build for automated checks
 mise run blender run      run the Blender binary used by automated checks
 mise run dev paths        print dev paths
@@ -179,6 +182,6 @@ mise run dev debug        launch Blender with debugpy listening
 
 ## GitHub checks
 
-`.github/workflows/checks.yml` runs the PR commit-message check, then calls `.github/workflows/_verify.yml`.
+`.github/workflows/checks.yml` runs the PR commit-message check and the automated checks.
 
-The shared checks workflow runs lint, source add-on checks, Linux live clipboard checks, headless Blender checks, then installed add-on checks. The full release-candidate run checks Linux, Windows, and Apple Silicon macOS in headless Blender, plus the Linux live clipboard sessions listed in [testing.md](testing.md).
+Pull requests run the fast profile. Pushes to `main` run the full profile, upload the release package artifact, and act as the release gate. `.github/workflows/release.yml` only publishes a tag after that tag's commit has a successful full `main` check.
