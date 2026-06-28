@@ -1,0 +1,44 @@
+name: Set up Blender
+description: Restore, install, and refresh the cached Blender build.
+
+inputs:
+  cache-key:
+    description: Cache key suffix for this Blender build.
+    required: true
+  version:
+    description: Blender version or series to install.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Restore Blender cache
+      id: blender_cache
+      uses: actions/cache/restore@v5
+      with:
+        path: .cache/blender
+        key: blender-${{ inputs['cache-key'] }}-${{ runner.arch }}
+
+    - name: Install Blender
+      id: install_blender
+      env:
+        BLENDER_VERSION: ${{ inputs.version }}
+      shell: bash
+      run: mise run blender install "$BLENDER_VERSION"
+
+    - name: Delete stale Blender cache
+      if: ${{ github.event_name != 'pull_request' && steps.blender_cache.outputs['cache-hit'] == 'true' && steps.install_blender.outputs.cache_updated == 'true' }}
+      continue-on-error: true
+      env:
+        BLENDER_CACHE_KEY: blender-${{ inputs['cache-key'] }}-${{ runner.arch }}
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: gh cache delete "$BLENDER_CACHE_KEY" || true
+
+    - name: Save Blender cache
+      if: ${{ github.event_name != 'pull_request' && (steps.blender_cache.outputs['cache-hit'] != 'true' || steps.install_blender.outputs.cache_updated == 'true') }}
+      continue-on-error: true
+      uses: actions/cache/save@v5
+      with:
+        path: .cache/blender
+        key: blender-${{ inputs['cache-key'] }}-${{ runner.arch }}

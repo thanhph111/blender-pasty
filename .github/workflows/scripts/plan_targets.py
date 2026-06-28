@@ -31,15 +31,32 @@ def main() -> None:
 
 def headless_matrix(profile: str) -> dict[str, list[dict[str, str]]]:
     if profile == "fast":
-        targets = ["Linux, Blender 4.2", "Linux, Blender 5.1"]
+        targets = [
+            ("Linux", "ubuntu-24.04", "linux", "4.2"),
+            ("Linux", "ubuntu-24.04", "linux", "5.1"),
+        ]
     else:
         targets = [
-            f"{platform}, Blender {blender}"
-            for platform in ("Linux", "Windows", "macOS")
+            (label, runner, cache_prefix, blender)
+            for label, runner, cache_prefix in (
+                ("Linux", "ubuntu-24.04", "linux"),
+                ("Windows", "windows-2025", "windows"),
+                ("macOS", "macos-15", "macos"),
+            )
             for blender in ("4.2", "4.5", "5.1")
         ]
 
-    return {"include": [{"target": target} for target in targets]}
+    return {
+        "include": [
+            {
+                "label": f"{label}, Blender {blender}",
+                "runner": runner,
+                "blender": blender,
+                "cache_key": f"{cache_prefix}-blender-{blender}",
+            }
+            for label, runner, cache_prefix, blender in targets
+        ]
+    }
 
 
 def clipboard_matrix(profile: str) -> dict[str, list[dict[str, str]]]:

@@ -6,12 +6,8 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to release, such as v0.1.0
+        description: Existing tag to release or upload, such as v0.2.0
         required: true
-        type: string
-      build_run_id:
-        description: Successful release candidate run ID to promote. Leave empty to find it by tag commit.
-        required: false
         type: string
       upload_blender_extensions:
         description: Upload this version to Blender Extensions using the API
@@ -29,20 +25,21 @@ permissions:
 env:
   MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
 
 jobs:
-  resolve-build:
-    name: Find release package
+  resolve-package:
+    name: Find checked package
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       actions: read
       contents: read
     outputs:
-      build_run_id: ${{ steps.resolve.outputs.build_run_id }}
-      build_url: ${{ steps.resolve.outputs.build_url }}
+      check_run_id: ${{ steps.resolve.outputs.check_run_id }}
       commit: ${{ steps.resolve.outputs.commit }}
       tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
     steps:
       - name: Check out release tag
         uses: actions/checkout@v7
@@ -51,95 +48,93 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Find built package for this commit
+      - name: Find successful main checks
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
-          INPUT_BUILD_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.build_run_id || '' }}
         shell: bash
         run: |
           tag="$RELEASE_TAG"
+          version="${tag#v}"
+          if [ "$tag" != "v$version" ] || [ -z "$version" ]; then
+            echo "Release tag must look like v0.2.0, got: $tag" >&2
+            exit 1
+          fi
+
           commit="$(git rev-list -n 1 "$tag")"
-
-          if [ -n "$INPUT_BUILD_RUN_ID" ]; then
-            build_run_id="$INPUT_BUILD_RUN_ID"
-          else
-            build_run_id="$(
-              gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release-candidate.yml/runs" \
-                --method GET \
-                -f head_sha="$commit" \
-                -f status=success \
-                -f per_page=20 \
-                --jq '.workflow_runs[] | select(.head_branch | startswith("release/")) | .id' \
-                | head -n 1
-            )"
-          fi
-
-          if [ -z "$build_run_id" ]; then
-            echo "No successful release candidate run found for ${tag} (${commit})." >&2
-            echo "Push a release branch for this commit first, then push the tag." >&2
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$commit" refs/remotes/origin/main; then
+            echo "$tag points at $commit, which is not on origin/main." >&2
             exit 1
           fi
 
-          build_head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${build_run_id}" --jq '.head_sha')"
-          build_status="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${build_run_id}" --jq '.status')"
-          build_conclusion="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${build_run_id}" --jq '.conclusion')"
-          build_url="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${build_run_id}" --jq '.html_url')"
-
-          if [ "$build_head_sha" != "$commit" ]; then
-            echo "Release candidate ${build_run_id} belongs to ${build_head_sha}, not ${commit}." >&2
+          manifest_version="$(python3 -c 'import tomllib; print(tomllib.load(open("blender_manifest.toml", "rb"))["version"])')"
+          if [ "$manifest_version" != "$version" ]; then
+            echo "blender_manifest.toml version is $manifest_version, expected $version." >&2
             exit 1
           fi
-          if [ "$build_status" != "completed" ] || [ "$build_conclusion" != "success" ]; then
-            echo "Release candidate ${build_run_id} is ${build_status}/${build_conclusion}, not completed/success." >&2
+
+          check_run_id="$(
+            gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/checks.yml/runs" \
+              --method GET \
+              -f branch=main \
+              -f event=push \
+              -f head_sha="$commit" \
+              -f status=success \
+              -f per_page=10 \
+              --jq '(.workflow_runs[0] // empty) | .id'
+          )"
+          if [ -z "$check_run_id" ]; then
+            echo "No successful Checks run on main found for $tag ($commit)." >&2
+            echo "Wait for Checks to pass on main, then rerun this Release workflow." >&2
             exit 1
           fi
 
           {
-            echo "build_run_id=${build_run_id}"
-            echo "build_url=${build_url}"
+            echo "check_run_id=${check_run_id}"
             echo "commit=${commit}"
             echo "tag=${tag}"
+            echo "version=${version}"
           } >> "$GITHUB_OUTPUT"
 
   github-release:
     name: Draft GitHub release
-    needs: [resolve-build]
+    needs: [resolve-package]
+    if: ${{ github.event_name == 'push' || inputs.upload_blender_extensions == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       actions: read
       contents: write
     steps:
-      - name: Check out repository
+      - name: Check out release tag
         uses: actions/checkout@v7
         with:
-          ref: refs/tags/${{ needs.resolve-build.outputs.tag }}
+          ref: refs/tags/${{ needs.resolve-package.outputs.tag }}
           persist-credentials: false
 
-      - name: Set up mise
-        uses: jdx/mise-action@v4
-        with:
-          cache: false
+      - name: Set up project
+        uses: ./.github/actions/setup-project
 
-      - name: Download built package
+      - name: Download checked package
         env:
+          CHECK_RUN_ID: ${{ needs.resolve-package.outputs.check_run_id }}
           GH_TOKEN: ${{ github.token }}
-          BUILD_RUN_ID: ${{ needs.resolve-build.outputs.build_run_id }}
         shell: bash
         run: |
-          gh run download "$BUILD_RUN_ID" --name pasty-release-package --dir dist
+          mkdir -p dist
+          gh run download "$CHECK_RUN_ID" --name pasty-release-package --dir dist
           test -n "$(find dist -maxdepth 1 -type f -name 'pasty-*.zip' | head -n 1)"
 
       - name: Write release notes from changelog
-        shell: bash
-        run: |
-          version="${RELEASE_TAG#v}"
-          mise run --quiet release-notes -- "$version" > dist/RELEASE_NOTES.md
+        env:
+          VERSION: ${{ needs.resolve-package.outputs.version }}
+        run: mise run --quiet release notes -- "$VERSION" > dist/RELEASE_NOTES.md
 
       - name: Draft GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve-package.outputs.tag }}
         shell: bash
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
@@ -158,39 +153,35 @@ jobs:
 
   blender-extensions-upload:
     name: Upload to Blender Extensions
-    needs: [resolve-build]
+    needs: [resolve-package]
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_blender_extensions }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      actions: read
       contents: read
     steps:
-      - name: Check out repository
+      - name: Check out release tag
         uses: actions/checkout@v7
         with:
-          ref: refs/tags/${{ needs.resolve-build.outputs.tag }}
+          ref: refs/tags/${{ needs.resolve-package.outputs.tag }}
           persist-credentials: false
 
-      - name: Set up mise
-        uses: jdx/mise-action@v4
-        with:
-          cache: false
+      - name: Set up project
+        uses: ./.github/actions/setup-project
 
-      - name: Download built package
+      - name: Download GitHub release package
         env:
           GH_TOKEN: ${{ github.token }}
-          BUILD_RUN_ID: ${{ needs.resolve-build.outputs.build_run_id }}
+          RELEASE_TAG: ${{ needs.resolve-package.outputs.tag }}
         shell: bash
         run: |
-          gh run download "$BUILD_RUN_ID" --name pasty-release-package --dir dist
-          test -n "$(find dist -maxdepth 1 -type f -name 'pasty-*.zip' | head -n 1)"
+          mkdir -p dist
+          gh release download "$RELEASE_TAG" --pattern 'pasty-*.zip' --dir dist --clobber
 
       - name: Write release notes from changelog
-        shell: bash
-        run: |
-          version="${RELEASE_TAG#v}"
-          mise run --quiet release-notes -- "$version" > dist/RELEASE_NOTES.md
+        env:
+          VERSION: ${{ needs.resolve-package.outputs.version }}
+        run: mise run --quiet release notes -- "$VERSION" > dist/RELEASE_NOTES.md
 
       - name: Upload version to Blender Extensions
         env:

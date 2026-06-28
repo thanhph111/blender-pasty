@@ -12,6 +12,16 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Keep Blender, dprint, and uv state inside the workspace so checks are repeatable.
+  BLENDER_USER_CONFIG: ${{ github.workspace }}/.cache/blender-user/config
+  BLENDER_USER_EXTENSIONS: ${{ github.workspace }}/.cache/blender-user/extensions
+  BLENDER_USER_SCRIPTS: ${{ github.workspace }}/.cache/blender-user/scripts
+  CHECK_PROFILE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'full' || 'fast' }}
+  DPRINT_CACHE_DIR: ${{ github.workspace }}/.cache/dprint
+  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
+
 jobs:
   commit-messages:
     name: Check commit messages
@@ -31,6 +41,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
         run: |
           status=0
           while IFS= read -r msg; do
@@ -40,13 +51,224 @@ jobs:
           done < <(gh pr view "$PR_NUMBER" --json commits --jq '.commits[].messageHeadline')
           exit "$status"
 
-  verify:
-    name: Run checks
-    uses: ./.github/workflows/_verify.yml
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up project
+        uses: ./.github/actions/setup-project
+        with:
+          install-deps: true
+          prek-cache: true
+          uv-cache: true
+
+      - name: Run lint
+        run: mise run lint
+
+      - name: Minimize uv cache
+        run: mise exec -- uv cache prune --ci
+
+  source-addon:
+    name: Source add-on
+    needs: [lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up project
+        uses: ./.github/actions/setup-project
+        with:
+          install-deps: true
+          uv-cache: true
+
+      - name: Run source add-on checks
+        run: mise run test source
+
+      - name: Minimize uv cache
+        run: mise exec -- uv cache prune --ci
+
+  headless-blender-targets:
+    name: Plan headless Blender targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Choose headless Blender targets
+        id: matrix
+        run: python3 .github/workflows/scripts/plan_targets.py headless --profile "$CHECK_PROFILE"
+
+  headless-blender:
+    name: ${{ matrix.label }}
+    needs: [source-addon, headless-blender-targets]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     permissions:
       actions: write
       contents: read
-    with:
-      artifact_name: pasty
-      checkout_ref: ${{ github.sha }}
-      profile: fast
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.headless-blender-targets.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up project
+        uses: ./.github/actions/setup-project
+
+      - name: Set up Blender
+        uses: ./.github/actions/setup-blender
+        with:
+          cache-key: ${{ matrix.cache_key }}
+          version: ${{ matrix.blender }}
+
+      - name: Print Blender version
+        run: mise run blender run -- --version
+
+      - name: Run headless Blender checks
+        run: mise run blender run -- --background --factory-startup --python-exit-code 1 --python checks/addon/source.py
+
+  live-clipboard-targets:
+    name: Plan live clipboard targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Choose live clipboard targets
+        id: matrix
+        run: python3 .github/workflows/scripts/plan_targets.py clipboard --profile "$CHECK_PROFILE"
+
+  live-clipboard:
+    name: ${{ matrix.label }}
+    needs: [source-addon, live-clipboard-targets]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      actions: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.live-clipboard-targets.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up project
+        uses: ./.github/actions/setup-project
+
+      - name: Set up Blender
+        uses: ./.github/actions/setup-blender
+        with:
+          cache-key: ${{ matrix.cache_key }}
+          version: ${{ matrix.blender }}
+
+      - name: Install Linux X11 desktop tools
+        if: matrix.session == 'linux-x11'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth xclip libegl1
+
+      - name: Install Linux Wayland desktop tools
+        if: matrix.session == 'linux-wayland'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            dbus-x11 \
+            kmod \
+            libdecor-0-0 \
+            libegl-mesa0 \
+            libegl1 \
+            libgl1-mesa-dri \
+            libgles2 \
+            libwayland-egl1 \
+            mesa-utils \
+            mesa-utils-extra \
+            sway \
+            wl-clipboard \
+            wtype \
+            ydotool \
+            ydotoold
+
+      - name: Run Linux X11 clipboard check
+        if: matrix.session == 'linux-x11'
+        env:
+          PASTY_CLIPBOARD_SCENARIO: all
+        run: bash checks/linux/x11.sh
+
+      - name: Run Linux Wayland clipboard check
+        if: matrix.session == 'linux-wayland'
+        env:
+          PASTY_CLIPBOARD_SCENARIO: all
+        run: bash checks/linux/wayland.sh
+
+  installed-addon:
+    name: Installed add-on
+    needs: [source-addon, headless-blender, live-clipboard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up project
+        uses: ./.github/actions/setup-project
+        with:
+          install-deps: true
+          uv-cache: true
+
+      - name: Set up Blender
+        uses: ./.github/actions/setup-blender
+        with:
+          cache-key: linux-blender-5.1
+          version: '5.1'
+
+      - name: Build and check installed add-on
+        run: mise run test package
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'pasty-release-package' || 'pasty' }}
+          path: dist/pasty-*.zip
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 30 || 7 }}
+
+      - name: Minimize uv cache
+        run: mise exec -- uv cache prune --ci
